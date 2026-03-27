@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "An Adidas order from the backlog",
+      "type": "object",
+      "properties": {
+        "gestor": { "type": "string", "description": "Gestor do pedido" },
+        "loja": { "type": "string", "description": "Loja do pedido" },
+        "subGrupo": { "type": "string", "description": "Subgrupo do material" },
+        "colecao": { "type": "string", "description": "Coleção do material" },
+        "status": { "type": "string", "description": "Status do pedido" },
+        "dataLancamento": { "type": "string", "description": "Data de lançamento" },
+        "mesRecebMaterial": { "type": "string", "description": "Mês de recebimento do material" },
+        "material": { "type": "string", "description": "Código do material" },
+        "materialDescription": { "type": "string", "description": "Descrição do material" },
+        "qtdeConfirmada": { "type": "number", "description": "Quantidade confirmada" },
+        "valorNF": { "type": "number", "description": "Valor da nota fiscal" },
+        "syncDate": { "type": "string", "description": "Data da última sincronização" }
+      },
+      "required": ["gestor", "loja", "material", "qtdeConfirmada", "valorNF"]
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of all Adidas orders"
+    }
+  }
+}

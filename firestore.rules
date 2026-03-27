@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: orders
+    // Document ID: auto-generated
+    // Fields:
+    //   - gestor: string (required)
+    //   - loja: string (required)
+    //   - subGrupo: string
+    //   - colecao: string
+    //   - status: string
+    //   - dataLancamento: string
+    //   - mesRecebMaterial: string
+    //   - material: string (required)
+    //   - materialDescription: string
+    //   - qtdeConfirmada: number (required)
+    //   - valorNF: number (required)
+    //   - syncDate: string
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "hugotjk2@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['gestor', 'loja', 'material', 'qtdeConfirmada', 'valorNF']) &&
+             data.gestor is string && data.gestor.size() > 0 &&
+             data.loja is string && data.loja.size() > 0 &&
+             data.material is string && data.material.size() > 0 &&
+             data.qtdeConfirmada is number &&
+             data.valorNF is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      // Allow authenticated users to read orders
+      allow read: if isAuthenticated();
+      
+      // Only admins can write/delete orders (syncing is an admin task)
+      allow write: if isAdmin() && isValidOrder(request.resource.data);
+    }
+  }
+}
