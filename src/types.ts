@@ -14,6 +14,16 @@ export interface Order {
   syncDate?: string;
 }
 
+export interface GroupedOrder {
+  material: string;
+  materialDescription: string;
+  status: string;
+  colecao: string;
+  qtdeConfirmada: number;
+  valorNF: number;
+  items: Order[];
+}
+
 export type FilterType = keyof Pick<
   Order,
   | "gestor"
@@ -24,6 +34,8 @@ export type FilterType = keyof Pick<
   | "dataLancamento"
   | "mesRecebMaterial"
 >;
+
+export type Filters = Partial<Record<FilterType, string[]>>;
 
 export const FILTER_LABELS: Record<FilterType, string> = {
   gestor: "Gestor",

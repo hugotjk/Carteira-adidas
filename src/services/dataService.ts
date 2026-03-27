@@ -15,6 +15,9 @@ export async function fetchSheetData(): Promise<Order[]> {
         header: true,
         skipEmptyLines: true,
         complete: (results) => {
+          const fields = results.meta.fields || [];
+          const aeHeader = fields[30]; // Column AE is index 30
+
           const orders: Order[] = results.data.map((row: any) => ({
             gestor: row["Gestor"] || row["GESTOR"] || "",
             loja: row["Loja"] || row["LOJA"] || "",
@@ -26,7 +29,7 @@ export async function fetchSheetData(): Promise<Order[]> {
             material: row["Material"] || row["MATERIAL"] || "",
             materialDescription: row["Material Description"] || row["MATERIAL DESCRIPTION"] || "",
             qtdeConfirmada: parseFloat(String(row["Qtde Confirmada"] || row["QTDE CONFIRMADA"] || "0").replace(",", ".")),
-            valorNF: parseFloat(String(row["valor nf"] || row["VALOR NF"] || "0").replace(",", ".")),
+            valorNF: parseFloat(String(row[aeHeader] || row["valor nf"] || row["VALOR NF"] || "0").replace(",", ".")),
           }));
           resolve(orders);
         },

@@ -3,73 +3,57 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, AreaChart, Area 
 } from "recharts";
-import { Filter, ChevronDown, TrendingUp, DollarSign, Package, PieChart as PieChartIcon, Loader2, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, TrendingUp, DollarSign, Package, PieChart as PieChartIcon, Loader2, SlidersHorizontal, X } from "lucide-react";
 import { Order, FilterType, FILTER_LABELS } from "../types";
 import { cn, formatCurrency, formatNumber } from "../lib/utils";
-import { getOrdersLocally } from "../services/dataService";
 import { motion, AnimatePresence } from "framer-motion";
+import { useFilters } from "../context/FilterContext";
+import { useData } from "../context/DataContext";
 
 const COLORS = ["#000000", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
 const DashboardPage: React.FC = () => {
-  const [allOrders, setAllOrders] = React.useState<Order[]>([]);
-  const [filteredOrders, setFilteredOrders] = React.useState<Order[]>([]);
-  const [filters, setFilters] = React.useState<Partial<Record<FilterType, string>>>({});
-  const [loading, setLoading] = React.useState(true);
+  const { filters, updateFilter, clearFilters } = useFilters();
+  const { allOrders, loading } = useData();
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = React.useState(false);
-
-  React.useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const data = await getOrdersLocally();
-        setAllOrders(data);
-        setFilteredOrders(data);
-      } catch (error) {
-        console.error("Error loading dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
 
   const getFilterOptions = (filterType: FilterType) => {
     const otherFilters = { ...filters };
     delete otherFilters[filterType];
     let filteredForOptions = allOrders;
-    Object.entries(otherFilters).forEach(([key, value]) => {
-      if (value) {
+    Object.entries(otherFilters).forEach(([key, values]) => {
+      const filterValues = values as string[] | undefined;
+      if (filterValues && filterValues.length > 0) {
         filteredForOptions = filteredForOptions.filter(
-          (order) => order[key as FilterType] === value
+          (order) => filterValues.includes(order[key as FilterType])
         );
       }
     });
     return Array.from(new Set(filteredForOptions.map((order) => order[filterType]))).filter(Boolean).sort();
   };
 
-  React.useEffect(() => {
+  const filteredOrders = React.useMemo(() => {
     let result = [...allOrders];
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        result = result.filter((order) => order[key as FilterType] === value);
+    Object.entries(filters).forEach(([key, values]) => {
+      const filterValues = values as string[] | undefined;
+      if (filterValues && filterValues.length > 0) {
+        result = result.filter((order) => filterValues.includes(order[key as FilterType]));
       }
     });
-    setFilteredOrders(result);
+    return result;
   }, [filters, allOrders]);
 
-  const handleFilterChange = (type: FilterType, value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      [type]: value === "" ? undefined : value,
-    }));
+  const toggleFilterValue = (type: FilterType, value: string) => {
+    const currentValues = filters[type] || [];
+    const newValues = currentValues.includes(value)
+      ? currentValues.filter((v) => v !== value)
+      : [...currentValues, value];
+    updateFilter(type, newValues);
   };
 
-  const clearFilters = () => setFilters({});
-
   // Data Aggregations
-  const totalValue = filteredOrders.reduce((sum, order) => sum + order.valorNF, 0);
-  const totalQty = filteredOrders.reduce((sum, order) => sum + order.qtdeConfirmada, 0);
+  const totalValue = React.useMemo(() => filteredOrders.reduce((sum, order) => sum + order.valorNF, 0), [filteredOrders]);
+  const totalQty = React.useMemo(() => filteredOrders.reduce((sum, order) => sum + order.qtdeConfirmada, 0), [filteredOrders]);
   
   const dataByStatus = React.useMemo(() => {
     const agg: Record<string, number> = {};
@@ -147,7 +131,7 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* Charts Section */}
-      <div className="px-4 space-y-4">
+      <div className="px-4 space-y-4 pb-20">
         {/* Status Chart */}
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-sm font-bold mb-4 flex items-center">
@@ -260,7 +244,7 @@ const DashboardPage: React.FC = () => {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-[32px] max-h-[85vh] overflow-hidden flex flex-col"
+              className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-[32px] max-h-[90vh] overflow-hidden flex flex-col"
             >
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
                 <div>
@@ -271,25 +255,41 @@ const DashboardPage: React.FC = () => {
                   <X size={20} />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {Object.entries(FILTER_LABELS).map(([key, label]) => (
-                  <div key={key} className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">{label}</label>
-                    <div className="relative">
-                      <select
-                        value={filters[key as FilterType] || ""}
-                        onChange={(e) => handleFilterChange(key as FilterType, e.target.value)}
-                        className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-black/5 outline-none transition-all"
-                      >
-                        <option value="">Todos</option>
-                        {getFilterOptions(key as FilterType).map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {Object.entries(FILTER_LABELS).map(([key, label]) => {
+                  const options = getFilterOptions(key as FilterType);
+                  const selectedValues = (filters[key as FilterType] || []) as string[];
+                  
+                  return (
+                    <div key={key} className="space-y-2">
+                      <div className="flex justify-between items-center px-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</label>
+                        {selectedValues.length > 0 && (
+                          <span className="text-[10px] font-bold text-blue-600">{selectedValues.length} selecionados</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {options.map((opt) => {
+                          const isSelected = selectedValues.includes(opt as string);
+                          return (
+                            <button
+                              key={opt as string}
+                              onClick={() => toggleFilterValue(key as FilterType, opt as string)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border",
+                                isSelected 
+                                  ? "bg-black text-white border-black" 
+                                  : "bg-gray-50 text-gray-600 border-gray-100 hover:border-gray-300"
+                              )}
+                            >
+                              {opt as string}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="p-6 border-t border-gray-100 grid grid-cols-2 gap-4">
                 <button onClick={clearFilters} className="py-4 text-sm font-bold text-gray-500 bg-gray-100 rounded-2xl">Limpar</button>

@@ -3,8 +3,10 @@ import { RefreshCw, CheckCircle, AlertCircle, Database, Clock, Cloud, Loader2 } 
 import { fetchSheetData, saveOrdersLocally } from "../services/dataService";
 import { cn } from "../lib/utils";
 import { motion } from "framer-motion";
+import { useData } from "../context/DataContext";
 
 const SyncPage: React.FC = () => {
+  const { refreshData } = useData();
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [lastSync, setLastSync] = React.useState<string | null>(
     localStorage.getItem("lastSyncDate")
@@ -22,6 +24,7 @@ const SyncPage: React.FC = () => {
       setMessage(`Processando ${data.length} registros...`);
       
       await saveOrdersLocally(data);
+      await refreshData();
       
       const now = new Date().toLocaleString("pt-BR");
       setLastSync(now);
