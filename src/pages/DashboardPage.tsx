@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, AreaChart, Area 
 } from "recharts";
-import { ChevronDown, TrendingUp, DollarSign, Package, PieChart as PieChartIcon, Loader2, SlidersHorizontal, X } from "lucide-react";
+import { ChevronDown, TrendingUp, DollarSign, Package, PieChart as PieChartIcon, Loader2, SlidersHorizontal, X, Search, Check } from "lucide-react";
 import { Order, FilterType, FILTER_LABELS } from "../types";
 import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,7 +15,8 @@ const COLORS = ["#000000", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"
 const DashboardPage: React.FC = () => {
   const { filters, updateFilter, clearFilters } = useFilters();
   const { allOrders, loading } = useData();
-  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = React.useState(false);
+  const [activeFilter, setActiveFilter] = React.useState<FilterType | null>(null);
+  const [filterSearch, setFilterSearch] = React.useState("");
 
   const getFilterOptions = (filterType: FilterType) => {
     const otherFilters = { ...filters };
@@ -49,6 +50,15 @@ const DashboardPage: React.FC = () => {
       ? currentValues.filter((v) => v !== value)
       : [...currentValues, value];
     updateFilter(type, newValues);
+  };
+
+  const toggleSelectAll = (type: FilterType, options: string[]) => {
+    const currentValues = filters[type] || [];
+    if (currentValues.length === options.length) {
+      updateFilter(type, []);
+    } else {
+      updateFilter(type, options);
+    }
   };
 
   // Data Aggregations
@@ -94,23 +104,138 @@ const DashboardPage: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 py-3 shadow-sm flex items-center justify-between">
-        <h2 className="text-xl font-bold tracking-tight">Dashboard</h2>
-        <button 
-          onClick={() => setIsFilterDrawerOpen(true)}
-          className={cn(
-            "p-2 rounded-full transition-colors relative",
-            Object.keys(filters).length > 0 ? "bg-black text-white" : "bg-gray-100 text-gray-600"
-          )}
-        >
-          <SlidersHorizontal size={18} />
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h2 className="text-xl font-bold tracking-tight">Dashboard</h2>
           {Object.keys(filters).length > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white">
-              {Object.keys(filters).length}
-            </span>
+            <button 
+              onClick={clearFilters}
+              className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
+            >
+              Limpar Filtros
+            </button>
           )}
-        </button>
+        </div>
+
+        {/* Excel-like Filter Bar */}
+        <div className="flex overflow-x-auto no-scrollbar px-4 pb-3 space-x-2">
+          {Object.entries(FILTER_LABELS).map(([key, label]) => {
+            const type = key as FilterType;
+            const isSelected = (filters[type] || []).length > 0;
+            return (
+              <button
+                key={key}
+                onClick={() => {
+                  setActiveFilter(activeFilter === type ? null : type);
+                  setFilterSearch("");
+                }}
+                className={cn(
+                  "flex-shrink-0 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all whitespace-nowrap",
+                  isSelected 
+                    ? "bg-black text-white border-black" 
+                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                )}
+              >
+                <span>{label}</span>
+                <ChevronDown size={12} className={cn("transition-transform", activeFilter === type && "rotate-180")} />
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Filter Dropdown Overlay */}
+      <AnimatePresence>
+        {activeFilter && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setActiveFilter(null)}
+              className="fixed inset-0 bg-black/20 z-40"
+            />
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="fixed top-[100px] left-4 right-4 z-50 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[60vh]"
+            >
+              <div className="p-3 border-b border-gray-50 bg-gray-50/50 flex items-center justify-between">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                  Filtrar {FILTER_LABELS[activeFilter]}
+                </span>
+                <button onClick={() => setActiveFilter(null)} className="p-1 hover:bg-gray-200 rounded-full transition-colors">
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="p-3 border-b border-gray-50">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
+                  <input
+                    type="text"
+                    placeholder="Pesquisar..."
+                    value={filterSearch}
+                    onChange={(e) => setFilterSearch(e.target.value)}
+                    className="w-full bg-gray-100 border-none rounded-lg pl-8 pr-3 py-1.5 text-xs outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-1">
+                {/* Select All */}
+                <button
+                  onClick={() => toggleSelectAll(activeFilter, getFilterOptions(activeFilter) as string[])}
+                  className="w-full flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors group"
+                >
+                  <div className={cn(
+                    "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                    (filters[activeFilter] || []).length === getFilterOptions(activeFilter).length
+                      ? "bg-black border-black"
+                      : "border-gray-300 group-hover:border-gray-400"
+                  )}>
+                    <Check size={10} className="text-white" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-700">(Selecionar Tudo)</span>
+                </button>
+
+                {getFilterOptions(activeFilter)
+                  .filter(opt => String(opt).toLowerCase().includes(filterSearch.toLowerCase()))
+                  .map((opt) => {
+                    const isSelected = (filters[activeFilter] || []).includes(opt as string);
+                    return (
+                      <button
+                        key={opt as string}
+                        onClick={() => toggleFilterValue(activeFilter, opt as string)}
+                        className="w-full flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors group"
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                          isSelected 
+                            ? "bg-black border-black" 
+                            : "border-gray-300 group-hover:border-gray-400"
+                        )}>
+                          <Check size={10} className="text-white" />
+                        </div>
+                        <span className="text-xs text-gray-600 truncate">{opt as string}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+
+              <div className="p-3 bg-gray-50 border-t border-gray-100 flex justify-end">
+                <button 
+                  onClick={() => setActiveFilter(null)}
+                  className="px-4 py-2 bg-black text-white text-[10px] font-bold rounded-lg uppercase tracking-wider"
+                >
+                  Ok
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* KPI Grid */}
       <div className="p-4 grid grid-cols-2 gap-3">
@@ -228,77 +353,6 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Drawer */}
-      <AnimatePresence>
-        {isFilterDrawerOpen && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsFilterDrawerOpen(false)}
-              className="fixed inset-0 bg-black/40 z-40"
-            />
-            <motion.div 
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-[32px] max-h-[90vh] overflow-hidden flex flex-col"
-            >
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-bold">Filtros</h3>
-                  <p className="text-xs text-gray-400">Refine os dados do dashboard</p>
-                </div>
-                <button onClick={() => setIsFilterDrawerOpen(false)} className="p-2 bg-gray-100 rounded-full">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {Object.entries(FILTER_LABELS).map(([key, label]) => {
-                  const options = getFilterOptions(key as FilterType);
-                  const selectedValues = (filters[key as FilterType] || []) as string[];
-                  
-                  return (
-                    <div key={key} className="space-y-2">
-                      <div className="flex justify-between items-center px-1">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</label>
-                        {selectedValues.length > 0 && (
-                          <span className="text-[10px] font-bold text-blue-600">{selectedValues.length} selecionados</span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {options.map((opt) => {
-                          const isSelected = selectedValues.includes(opt as string);
-                          return (
-                            <button
-                              key={opt as string}
-                              onClick={() => toggleFilterValue(key as FilterType, opt as string)}
-                              className={cn(
-                                "px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border",
-                                isSelected 
-                                  ? "bg-black text-white border-black" 
-                                  : "bg-gray-50 text-gray-600 border-gray-100 hover:border-gray-300"
-                              )}
-                            >
-                              {opt as string}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="p-6 border-t border-gray-100 grid grid-cols-2 gap-4">
-                <button onClick={clearFilters} className="py-4 text-sm font-bold text-gray-500 bg-gray-100 rounded-2xl">Limpar</button>
-                <button onClick={() => setIsFilterDrawerOpen(false)} className="py-4 text-sm font-bold text-white bg-black rounded-2xl">Aplicar</button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

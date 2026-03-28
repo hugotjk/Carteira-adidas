@@ -18,6 +18,16 @@ export async function fetchSheetData(): Promise<Order[]> {
           const fields = results.meta.fields || [];
           const aeHeader = fields[30]; // Column AE is index 30
 
+          const parseNumber = (val: any) => {
+            if (!val) return 0;
+            const s = String(val).trim().replace(/[R$\s]/g, "");
+            if (s.includes(",")) {
+              // Brazilian format: 1.234,56 -> 1234.56
+              return parseFloat(s.replace(/\./g, "").replace(",", ".")) || 0;
+            }
+            return parseFloat(s) || 0;
+          };
+
           const orders: Order[] = results.data.map((row: any) => ({
             gestor: row["Gestor"] || row["GESTOR"] || "",
             loja: row["Loja"] || row["LOJA"] || "",
@@ -28,8 +38,8 @@ export async function fetchSheetData(): Promise<Order[]> {
             mesRecebMaterial: row["Mês Receb do Material"] || row["MES RECEB MATERIAL"] || "",
             material: row["Material"] || row["MATERIAL"] || "",
             materialDescription: row["Material Description"] || row["MATERIAL DESCRIPTION"] || "",
-            qtdeConfirmada: parseFloat(String(row["Qtde Confirmada"] || row["QTDE CONFIRMADA"] || "0").replace(",", ".")),
-            valorNF: parseFloat(String(row[aeHeader] || row["valor nf"] || row["VALOR NF"] || "0").replace(",", ".")),
+            qtdeConfirmada: parseNumber(row["Qtde Confirmada"] || row["QTDE CONFIRMADA"]),
+            valorNF: parseNumber(row[aeHeader] || row["valor nf"] || row["VALOR NF"]),
           }));
           resolve(orders);
         },
