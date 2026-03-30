@@ -17,6 +17,8 @@ const ReleasePage: React.FC = () => {
   const [filterSearch, setFilterSearch] = React.useState("");
   const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+  const [isSummaryOpen, setIsSummaryOpen] = React.useState(false);
+  const [summaryGroupBy, setSummaryGroupBy] = React.useState<'material' | 'subGrupo' | 'loja'>('material');
 
   const parseMonthYear = (monthYear: string) => {
     if (monthYear.includes("-")) {
@@ -113,6 +115,49 @@ const ReleasePage: React.FC = () => {
     }
   };
 
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setIsSummaryOpen(false);
+  };
+
+  const selectedOrders = React.useMemo(() => {
+    return allOrders.filter((_, idx) => selectedIds.has(idx));
+  }, [allOrders, selectedIds]);
+
+  const totals = React.useMemo(() => {
+    return selectedOrders.reduce(
+      (acc, order) => {
+        acc.qty += order.qtdeConfirmada;
+        acc.value += order.valorNF;
+        return acc;
+      },
+      { qty: 0, value: 0 }
+    );
+  }, [selectedOrders]);
+
+  const groupedSummary = React.useMemo(() => {
+    const summary: Record<string, { label: string; description: string; qty: number; value: number }> = {};
+    selectedOrders.forEach((order) => {
+      const key = order[summaryGroupBy];
+      if (!summary[key]) {
+        summary[key] = { 
+          label: key, 
+          description: summaryGroupBy === 'material' ? order.materialDescription : '', 
+          qty: 0, 
+          value: 0 
+        };
+      }
+      summary[key].qty += order.qtdeConfirmada;
+      summary[key].value += order.valorNF;
+    });
+    return Object.entries(summary)
+      .map(([key, data]) => ({
+        key,
+        ...data,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [selectedOrders, summaryGroupBy]);
+
   const handleExport = async () => {
     if (selectedIds.size === 0) return;
 
@@ -186,12 +231,20 @@ const ReleasePage: React.FC = () => {
         <div className="px-4 py-3 flex items-center justify-between">
           <h2 className="text-xl font-bold tracking-tight">Liberação</h2>
           <div className="flex items-center space-x-2">
+            {selectedIds.size > 0 && (
+              <button 
+                onClick={clearSelection}
+                className="text-[10px] font-bold text-orange-600 uppercase tracking-wider bg-orange-50 px-2 py-1 rounded-md"
+              >
+                Limpar Seleção
+              </button>
+            )}
             {Object.keys(filters).length > 0 && (
               <button 
                 onClick={clearFilters}
                 className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
               >
-                Limpar
+                Limpar Filtros
               </button>
             )}
             <button 
@@ -407,25 +460,100 @@ const ReleasePage: React.FC = () => {
         )}
       </div>
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button & Summary */}
       <AnimatePresence>
         {selectedIds.size > 0 && (
           <motion.div 
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-24 lg:bottom-8 left-4 right-4 lg:left-auto lg:right-8 lg:w-64 z-40"
+            className="fixed bottom-24 lg:bottom-8 left-4 right-4 lg:left-auto lg:right-8 lg:w-80 z-40"
           >
-            <button 
-              onClick={handleExport}
-              className="w-full bg-black text-white py-4 rounded-2xl shadow-2xl flex items-center justify-center space-x-3 active:scale-95 transition-transform"
-            >
-              <Share2 size={20} />
-              <div className="text-left">
-                <p className="text-xs font-black leading-none">Exportar CSV</p>
-                <p className="text-[10px] font-medium text-gray-400">{selectedIds.size} itens selecionados</p>
-              </div>
-            </button>
+            <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+              {/* Summary Header (Clickable) */}
+              <button 
+                onClick={() => setIsSummaryOpen(!isSummaryOpen)}
+                className="w-full px-4 py-3 bg-gray-50 flex items-center justify-between border-b border-gray-100"
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="flex flex-col items-start">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Qtde Total</span>
+                    <span className="text-sm font-black">{formatNumber(totals.qty)}</span>
+                  </div>
+                  <div className="flex flex-col items-start">
+                    <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Valor Total</span>
+                    <span className="text-sm font-black">{formatCurrency(totals.value)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">{selectedIds.size} itens</span>
+                  <ChevronDown 
+                    size={16} 
+                    className={cn("text-gray-400 transition-transform", isSummaryOpen && "rotate-180")} 
+                  />
+                </div>
+              </button>
+
+              {/* Material Summary (Expandable) */}
+              <AnimatePresence>
+                {isSummaryOpen && (
+                  <motion.div 
+                    initial={{ height: 0 }}
+                    animate={{ height: "auto" }}
+                    exit={{ height: 0 }}
+                    className="overflow-hidden bg-white max-h-[50vh] overflow-y-auto"
+                  >
+                    <div className="p-3">
+                      {/* Grouping Toggle */}
+                      <div className="flex p-1 bg-gray-100 rounded-xl mb-3">
+                        {(['material', 'subGrupo', 'loja'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={() => setSummaryGroupBy(mode)}
+                            className={cn(
+                              "flex-1 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all",
+                              summaryGroupBy === mode ? "bg-white text-black shadow-sm" : "text-gray-400"
+                            )}
+                          >
+                            {mode === 'subGrupo' ? 'Subgrupo' : mode}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="space-y-2">
+                        {groupedSummary.map((m) => (
+                          <div key={m.key} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <div className="flex justify-between items-start mb-1">
+                              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{m.label}</span>
+                              <span className="text-[11px] font-black text-gray-900">{formatCurrency(m.value)}</span>
+                            </div>
+                            
+                            <div className="flex justify-between items-end">
+                              <h4 className="text-[10px] font-bold text-gray-700 leading-tight flex-1 pr-4 truncate">
+                                {m.description || m.label}
+                              </h4>
+                              <div className="flex items-center space-x-1 whitespace-nowrap">
+                                <span className="text-[8px] font-bold text-gray-400 uppercase">QTDE:</span>
+                                <span className="text-[10px] font-black text-gray-900">{formatNumber(m.qty)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Export Button */}
+              <button 
+                onClick={handleExport}
+                className="w-full bg-black text-white py-4 flex items-center justify-center space-x-3 active:scale-[0.98] transition-transform"
+              >
+                <Share2 size={18} />
+                <span className="text-xs font-black uppercase tracking-wider">Exportar CSV</span>
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

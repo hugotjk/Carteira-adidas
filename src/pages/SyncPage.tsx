@@ -11,26 +11,30 @@ const SyncPage: React.FC = () => {
   const [lastSync, setLastSync] = React.useState<string | null>(
     localStorage.getItem("lastSyncDate")
   );
+  const [dataSourceDate, setDataSourceDate] = React.useState<string | null>(
+    localStorage.getItem("dataSourceDate")
+  );
   const [status, setStatus] = React.useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = React.useState("");
 
   const handleSync = async () => {
     setIsSyncing(true);
     setStatus("idle");
-    setMessage("Conectando à planilha...");
+    setMessage("Conectando...");
 
     try {
-      const data = await fetchSheetData();
-      setMessage(`Processando ${data.length} registros...`);
+      const { orders, dataSourceDate: dateFromSheet } = await fetchSheetData();
+      setMessage(`Processando...`);
       
-      await saveOrdersLocally(data);
+      await saveOrdersLocally(orders, dateFromSheet);
       await refreshData();
       
       const now = new Date().toLocaleString("pt-BR");
       setLastSync(now);
+      setDataSourceDate(dateFromSheet);
       
       setStatus("success");
-      setMessage(`Sincronização concluída! ${data.length} pedidos atualizados.`);
+      setMessage(`Sucesso! ${orders.length} itens.`);
     } catch (error) {
       console.error("Sync error:", error);
       setStatus("error");
@@ -68,57 +72,55 @@ const SyncPage: React.FC = () => {
             <div className="w-10 h-10 bg-green-50 text-green-600 rounded-full flex items-center justify-center">
               <Cloud size={20} />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-[10px] font-bold text-gray-400 uppercase">Fonte de Dados</p>
-              <p className="text-sm font-bold">Google Sheets (CSV)</p>
+              <p className="text-sm font-bold truncate">Google Sheets {dataSourceDate ? `(${dataSourceDate})` : ""}</p>
             </div>
           </div>
         </div>
 
-        {/* Sync Action Area */}
-        <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-sm flex flex-col items-center text-center">
-          <div className={cn(
-            "w-20 h-20 rounded-full flex items-center justify-center mb-6 transition-all duration-500",
-            isSyncing ? "bg-black text-white scale-110" : "bg-gray-100 text-gray-400"
-          )}>
-            <RefreshCw className={cn(isSyncing && "animate-spin")} size={32} />
+        {/* Sync Action Area - Reduced Size */}
+        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-4">
+              <div className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500",
+                isSyncing ? "bg-black text-white" : "bg-gray-100 text-gray-400"
+              )}>
+                <RefreshCw className={cn(isSyncing && "animate-spin")} size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold">
+                  {isSyncing ? "Sincronizando..." : "Sincronizar Agora"}
+                </h3>
+                <p className="text-[10px] text-gray-400">
+                  {isSyncing ? message : "Clique para atualizar os dados"}
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className={cn(
+                "px-4 py-2 bg-black text-white rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 shadow-lg shadow-black/10",
+                isSyncing && "bg-gray-900"
+              )}
+            >
+              {isSyncing ? "Aguarde" : "Atualizar"}
+            </button>
           </div>
-          
-          <h3 className="text-lg font-bold mb-2">
-            {isSyncing ? "Sincronizando..." : "Atualizar Base"}
-          </h3>
-          <p className="text-sm text-gray-400 mb-8 max-w-[200px]">
-            {isSyncing ? message : "Clique abaixo para buscar os dados mais recentes da planilha."}
-          </p>
-
-          <button
-            onClick={handleSync}
-            disabled={isSyncing}
-            className={cn(
-              "w-full py-4 bg-black text-white rounded-2xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100 shadow-xl shadow-black/10 flex items-center justify-center space-x-2",
-              isSyncing && "bg-gray-900"
-            )}
-          >
-            {isSyncing ? (
-              <>
-                <Loader2 className="animate-spin" size={18} />
-                <span>Aguarde...</span>
-              </>
-            ) : (
-              <span>Sincronizar Agora</span>
-            )}
-          </button>
 
           {status !== "idle" && !isSyncing && (
             <motion.div 
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               className={cn(
-                "mt-6 flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider",
+                "flex items-center space-x-2 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider",
                 status === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
               )}
             >
-              {status === "success" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+              {status === "success" ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
               <span>{message}</span>
             </motion.div>
           )}

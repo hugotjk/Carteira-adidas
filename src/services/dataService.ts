@@ -4,7 +4,7 @@ import { Order } from "../types";
 
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/1h302iCGdzxpayOumFfqU0MD-KlukMVWVadpZYy1-RF4/export?format=csv";
 
-export async function fetchSheetData(): Promise<Order[]> {
+export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDate: string }> {
   try {
     const response = await fetch(SHEET_URL);
     if (!response.ok) throw new Error("Falha ao buscar dados da planilha");
@@ -21,6 +21,9 @@ export async function fetchSheetData(): Promise<Order[]> {
           const ayHeader = fields[50]; // Column AY is index 50
           const azHeader = fields[51]; // Column AZ is index 51
           const baHeader = fields[52]; // Column BA is index 52
+          const apHeader = fields[41]; // Column AP is index 41 (AP2 is first data row)
+
+          const dataSourceDate = results.data[0] ? String(results.data[0][apHeader] || "") : "";
 
           const parseNumber = (val: any) => {
             if (!val) return 0;
@@ -55,7 +58,7 @@ export async function fetchSheetData(): Promise<Order[]> {
             estoqueGestor: parseNumber(row[baHeader] || row["estoque gestor"] || row["ESTOQUE GESTOR"]),
             originalRow: row,
           }));
-          resolve(orders);
+          resolve({ orders, dataSourceDate });
         },
         error: (error) => {
           reject(error);
@@ -68,11 +71,14 @@ export async function fetchSheetData(): Promise<Order[]> {
   }
 }
 
-export async function saveOrdersLocally(orders: Order[]) {
+export async function saveOrdersLocally(orders: Order[], dataSourceDate?: string) {
   // Use IndexedDB via idb-keyval for larger storage capacity
   await set("orders", orders);
   localStorage.setItem("lastSyncTimestamp", Date.now().toString());
   localStorage.setItem("lastSyncDate", new Date().toLocaleString("pt-BR"));
+  if (dataSourceDate) {
+    localStorage.setItem("dataSourceDate", dataSourceDate);
+  }
 }
 
 export async function getOrdersLocally(): Promise<Order[]> {
@@ -87,9 +93,9 @@ export async function autoSyncIfNecessary() {
   if (!lastSync || (Date.now() - parseInt(lastSync)) > twelveHours) {
     console.log("Auto-syncing data from Google Sheets...");
     try {
-      const data = await fetchSheetData();
-      await saveOrdersLocally(data);
-      return data;
+      const { orders, dataSourceDate } = await fetchSheetData();
+      await saveOrdersLocally(orders, dataSourceDate);
+      return orders;
     } catch (error) {
       console.error("Auto-sync failed:", error);
     }
