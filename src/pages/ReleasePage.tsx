@@ -1,11 +1,13 @@
 import React from "react";
-import { Search, ChevronDown, Loader2, X, Check, Download, Share2, Square, CheckSquare } from "lucide-react";
+import { Search, ChevronDown, Loader2, X, Check, Share2, Plus } from "lucide-react";
 import { Order, FilterType, FILTER_LABELS } from "../types";
 import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
 import Papa from "papaparse";
+
+const PAGE_SIZE = 50;
 
 const ReleasePage: React.FC = () => {
   const { filters, updateFilter, clearFilters } = useFilters();
@@ -14,6 +16,24 @@ const ReleasePage: React.FC = () => {
   const [activeFilter, setActiveFilter] = React.useState<FilterType | null>(null);
   const [filterSearch, setFilterSearch] = React.useState("");
   const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
+  const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
+
+  const parseMonthYear = (monthYear: string) => {
+    if (monthYear.includes("-")) {
+      const [y, m] = monthYear.split("-");
+      return new Date(parseInt(y), parseInt(m) - 1);
+    }
+    const months: Record<string, number> = {
+      'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
+      'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
+    };
+    const parts = monthYear.split('/');
+    if (parts.length === 2) {
+      const [m, y] = parts;
+      return new Date(parseInt(y), months[m.toUpperCase()] || 0);
+    }
+    return new Date(0);
+  };
 
   const getFilterOptions = (filterType: FilterType) => {
     const otherFilters = { ...filters };
@@ -52,20 +72,37 @@ const ReleasePage: React.FC = () => {
       );
     }
 
-    // Sort by value DESC
-    result.sort((a, b) => b.valorNF - a.valorNF);
+    // Sort: Material (by material's total value DESC), then Mes Receb (ASC)
+    const materialTotals: Record<string, number> = {};
+    result.forEach(o => {
+      materialTotals[o.material] = (materialTotals[o.material] || 0) + o.valorNF;
+    });
+
+    result.sort((a, b) => {
+      const totalA = materialTotals[a.material];
+      const totalB = materialTotals[b.material];
+      if (totalA !== totalB) return totalB - totalA;
+      if (a.material !== b.material) return a.material.localeCompare(b.material);
+      const dateA = parseMonthYear(a.mesRecebMaterial).getTime();
+      const dateB = parseMonthYear(b.mesRecebMaterial).getTime();
+      return dateA - dateB;
+    });
 
     return result;
   }, [filters, searchTerm, allOrders]);
 
+  // Reset visible count when filters or search change
+  React.useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filters, searchTerm]);
+
   const toggleSelection = (id: number) => {
-    const newSelected = new Set(selectedIds);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedIds(newSelected);
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const toggleSelectAllPage = () => {
@@ -96,7 +133,6 @@ const ReleasePage: React.FC = () => {
         });
       } catch (error) {
         console.error("Error sharing:", error);
-        // Fallback to download
         downloadFile(blob, filename);
       }
     } else {
@@ -141,8 +177,10 @@ const ReleasePage: React.FC = () => {
     );
   }
 
+  const visibleOrders = filteredOrders.slice(0, visibleCount);
+
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50 pb-24">
+    <div className="flex flex-col min-h-screen bg-gray-50 pb-32">
       {/* Sticky Header */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
         <div className="px-4 py-3 flex items-center justify-between">
@@ -178,7 +216,7 @@ const ReleasePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Excel-like Filter Bar */}
+        {/* Filter Bar */}
         <div className="flex overflow-x-auto no-scrollbar px-4 pb-3 space-x-2">
           {Object.entries(FILTER_LABELS).map(([key, label]) => {
             const type = key as FilterType;
@@ -205,7 +243,7 @@ const ReleasePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Dropdown Overlay */}
+      {/* Filter Overlay */}
       <AnimatePresence>
         {activeFilter && (
           <>
@@ -294,50 +332,73 @@ const ReleasePage: React.FC = () => {
 
       {/* List of Orders */}
       <div className="px-4 space-y-2 mt-4">
-        {filteredOrders.length > 0 ? (
-          filteredOrders.map((order, idx) => (
-            <motion.div 
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(idx * 0.005, 0.1) }}
-              key={`${order.pedido}-${order.material}-${idx}`} 
-              onClick={() => toggleSelection(order._internalId)}
-              className={cn(
-                "bg-white p-3 rounded-xl border transition-all flex items-center space-x-3",
-                selectedIds.has(order._internalId) ? "border-black bg-black/[0.02]" : "border-gray-100"
-              )}
-            >
-              <div className={cn(
-                "flex-shrink-0 w-6 h-6 rounded-lg border flex items-center justify-center transition-colors",
-                selectedIds.has(order._internalId) ? "bg-black border-black text-white" : "border-gray-200 text-transparent"
-              )}>
-                <Check size={14} />
-              </div>
+        {visibleOrders.length > 0 ? (
+          <>
+            {visibleOrders.map((order) => {
+              const isSelected = selectedIds.has(order._internalId);
+              return (
+                <div 
+                  key={`${order.pedido}-${order.material}-${order._internalId}`} 
+                  onClick={() => toggleSelection(order._internalId)}
+                  className={cn(
+                    "bg-white p-3 rounded-xl border transition-all flex items-center space-x-3 cursor-pointer",
+                    isSelected ? "border-black bg-black/[0.02]" : "border-gray-100"
+                  )}
+                >
+                  <div className={cn(
+                    "flex-shrink-0 w-6 h-6 rounded-lg border flex items-center justify-center transition-colors",
+                    isSelected ? "bg-black border-black text-white" : "border-gray-200 text-transparent"
+                  )}>
+                    <Check size={14} />
+                  </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{order.material} | {order.pedido}</span>
-                    <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{order.materialDescription}</h3>
-                  </div>
-                  <span className="text-[9px] font-bold text-gray-400">{order.mesRecebMaterial}</span>
-                </div>
-                
-                <div className="flex justify-between items-end mt-2">
-                  <div className="flex space-x-4">
-                    <div>
-                      <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde</p>
-                      <p className="text-xs font-black">{formatNumber(order.qtdeConfirmada)}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{order.material} | {order.pedido}</span>
+                          <span className="text-[9px] font-bold text-blue-500 uppercase tracking-wider bg-blue-50 px-1 rounded">{order.loja}</span>
+                        </div>
+                        <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{order.materialDescription}</h3>
+                      </div>
+                      <span className="text-[9px] font-bold text-gray-400">{order.mesRecebMaterial}</span>
                     </div>
-                    <div>
-                      <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Valor</p>
-                      <p className="text-xs font-black text-black">{formatCurrency(order.valorNF)}</p>
+                    
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-1 mt-1.5 pt-1.5 border-t border-gray-50">
+                      <div className="flex flex-col">
+                        <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde | Valor</p>
+                        <p className="text-[10px] font-black leading-none">
+                          {formatNumber(order.qtdeConfirmada)} <span className="text-gray-300 mx-1">|</span> {formatCurrency(order.valorNF)}
+                        </p>
+                      </div>
+                      <div className="flex flex-col">
+                        <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Venda | Estq</p>
+                        <p className="text-[10px] font-black leading-none">
+                          {formatNumber(order.venda)} <span className="text-gray-300 mx-1">|</span> {formatNumber(order.estoque)}
+                        </p>
+                      </div>
+                      <div className="flex flex-col">
+                        <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Venda G. | Estq G.</p>
+                        <p className="text-[10px] font-black leading-none text-orange-600">
+                          {formatNumber(order.mediaVenda)} <span className="text-gray-300 mx-1">|</span> {formatNumber(order.estoqueGestor)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </motion.div>
-          ))
+              );
+            })}
+
+            {visibleCount < filteredOrders.length && (
+              <button 
+                onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+                className="w-full py-4 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-400 flex items-center justify-center space-x-2 active:bg-gray-50"
+              >
+                <Plus size={14} />
+                <span>Carregar mais ({filteredOrders.length - visibleCount} restantes)</span>
+              </button>
+            )}
+          </>
         ) : (
           <div className="py-20 text-center">
             <Search className="text-gray-300 mx-auto mb-4" size={24} />

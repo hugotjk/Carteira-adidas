@@ -12,6 +12,10 @@ export interface Order {
   pedido: string;
   qtdeConfirmada: number;
   valorNF: number;
+  venda: number;
+  estoque: number;
+  mediaVenda: number;
+  estoqueGestor: number;
   syncDate?: string;
   originalRow?: any;
 }

@@ -17,15 +17,23 @@ export async function fetchSheetData(): Promise<Order[]> {
         complete: (results) => {
           const fields = results.meta.fields || [];
           const aeHeader = fields[30]; // Column AE is index 30
+          const axHeader = fields[49]; // Column AX is index 49
+          const ayHeader = fields[50]; // Column AY is index 50
+          const azHeader = fields[51]; // Column AZ is index 51
+          const baHeader = fields[52]; // Column BA is index 52
 
           const parseNumber = (val: any) => {
             if (!val) return 0;
             const s = String(val).trim().replace(/[R$\s]/g, "");
+            if (s === "" || s === "-") return 0;
+            let num;
             if (s.includes(",")) {
               // Brazilian format: 1.234,56 -> 1234.56
-              return parseFloat(s.replace(/\./g, "").replace(",", ".")) || 0;
+              num = parseFloat(s.replace(/\./g, "").replace(",", "."));
+            } else {
+              num = parseFloat(s);
             }
-            return parseFloat(s) || 0;
+            return isNaN(num) ? 0 : num;
           };
 
           const orders: Order[] = results.data.map((row: any) => ({
@@ -41,6 +49,10 @@ export async function fetchSheetData(): Promise<Order[]> {
             pedido: row["Pedido"] || row["PEDIDO"] || row["Order"] || row["ORDER"] || "",
             qtdeConfirmada: parseNumber(row["Qtde Confirmada"] || row["QTDE CONFIRMADA"]),
             valorNF: parseNumber(row[aeHeader] || row["valor nf"] || row["VALOR NF"]),
+            venda: parseNumber(row[axHeader] || row["venda"] || row["VENDA"]),
+            estoque: parseNumber(row[ayHeader] || row["estoque"] || row["ESTOQUE"]),
+            mediaVenda: parseNumber(row[azHeader] || row["media venda"] || row["MEDIA VENDA"]),
+            estoqueGestor: parseNumber(row[baHeader] || row["estoque gestor"] || row["ESTOQUE GESTOR"]),
             originalRow: row,
           }));
           resolve(orders);
