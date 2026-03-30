@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
 import Papa from "papaparse";
+import PageHeader from "../components/PageHeader";
 
 const PAGE_SIZE = 50;
 
@@ -166,7 +167,7 @@ const ReleasePage: React.FC = () => {
     
     const csv = Papa.unparse(rowsToExport);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const filename = `liberacao_${new Date().toISOString().split('T')[0]}.csv`;
+    const filename = `lib_canc_${new Date().toISOString().split('T')[0]}.csv`;
 
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "text/csv" })] })) {
       try {
@@ -227,36 +228,35 @@ const ReleasePage: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-32">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-tight">Liberação</h2>
-          <div className="flex items-center space-x-2">
-            {selectedIds.size > 0 && (
-              <button 
-                onClick={clearSelection}
-                className="text-[10px] font-bold text-orange-600 uppercase tracking-wider bg-orange-50 px-2 py-1 rounded-md"
-              >
-                Limpar Seleção
-              </button>
-            )}
-            {Object.keys(filters).length > 0 && (
-              <button 
-                onClick={clearFilters}
-                className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
-              >
-                Limpar Filtros
-              </button>
-            )}
+      <PageHeader title="Liberar & Cancelar">
+        <div className="flex items-center space-x-2">
+          {selectedIds.size > 0 && (
             <button 
-              onClick={toggleSelectAllPage}
-              className="text-[10px] font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-2 py-1 rounded-md"
+              onClick={clearSelection}
+              className="text-[10px] font-bold text-orange-600 uppercase tracking-wider bg-orange-50 px-2 py-1 rounded-md"
             >
-              {selectedIds.size === filteredOrders.length ? "Desmarcar" : "Marcar Todos"}
+              Limpar Seleção
             </button>
-          </div>
+          )}
+          {Object.keys(filters).length > 0 && (
+            <button 
+              onClick={clearFilters}
+              className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
+            >
+              Limpar Filtros
+            </button>
+          )}
+          <button 
+            onClick={toggleSelectAllPage}
+            className="text-[10px] font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-2 py-1 rounded-md"
+          >
+            {selectedIds.size === filteredOrders.length ? "Desmarcar" : "Marcar Todos"}
+          </button>
         </div>
-        
-        <div className="px-4 pb-3">
+      </PageHeader>
+      
+      <div className="bg-white border-b border-gray-100 shadow-sm">
+        <div className="px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input

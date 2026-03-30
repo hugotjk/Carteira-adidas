@@ -4,6 +4,7 @@ import { fetchSheetData, saveOrdersLocally } from "../services/dataService";
 import { cn } from "../lib/utils";
 import { motion } from "framer-motion";
 import { useData } from "../context/DataContext";
+import PageHeader from "../components/PageHeader";
 
 const SyncPage: React.FC = () => {
   const { refreshData } = useData();
@@ -47,11 +48,12 @@ const SyncPage: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Header */}
+      <PageHeader title="Banco de Dados" />
+      
       <div className="bg-white border-b border-gray-100 px-6 py-8 shadow-sm">
         <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-black/10">
           <Database className="text-white" size={24} />
         </div>
-        <h2 className="text-2xl font-bold tracking-tight">Banco de Dados</h2>
         <p className="text-gray-400 text-sm mt-1">Sincronize os dados com a planilha mestre da Adidas.</p>
       </div>
 

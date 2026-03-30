@@ -3,21 +3,41 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend, AreaChart, Area 
 } from "recharts";
-import { ChevronDown, TrendingUp, DollarSign, Package, PieChart as PieChartIcon, Loader2, SlidersHorizontal, X, Search, Check } from "lucide-react";
+import { TrendingUp, DollarSign, Package, PieChart as PieChartIcon, Loader2 } from "lucide-react";
 import { Order, FilterType, FILTER_LABELS } from "../types";
 import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
+import PageHeader from "../components/PageHeader";
+import { ChevronDown, X, Search, Check } from "lucide-react";
 
-const COLORS = ["#000000", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+const STATUS_COLORS: Record<string, string> = {
+  "Faturado": "#10b981",
+  "FATURADO": "#10b981",
+  "Disponível": "#3b82f6",
+  "DISPONÍVEL": "#3b82f6",
+  "Disponivel": "#3b82f6",
+  "DISPONIVEL": "#3b82f6",
+  "Aguardando chegada": "#000000",
+  "Aguardando Chegada": "#000000",
+  "AGUARDANDO CHEGADA": "#000000",
+  "Liberado": "#f59e0b",
+  "LIBERADO": "#f59e0b",
+  "Liberado - parado em credito": "#8b5cf6",
+  "Liberado - Parado em Crédito": "#8b5cf6",
+  "LIBERADO - PARADO EM CREDITO": "#8b5cf6",
+  "Cancelado": "#ef4444",
+  "cancelado": "#ef4444",
+  "CANCELADO": "#ef4444",
+};
 
 const DashboardPage: React.FC = () => {
   const { filters, updateFilter, clearFilters } = useFilters();
   const { allOrders, loading } = useData();
   const [activeFilter, setActiveFilter] = React.useState<FilterType | null>(null);
   const [filterSearch, setFilterSearch] = React.useState("");
-  const [analysisMode, setAnalysisMode] = React.useState<'gestor' | 'subGrupo' | 'loja'>('gestor');
+  const [analysisMode, setAnalysisMode] = React.useState<'subGrupo' | 'loja'>('subGrupo');
 
   const getFilterOptions = (filterType: FilterType) => {
     const otherFilters = { ...filters };
@@ -120,21 +140,20 @@ const DashboardPage: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-tight">Dashboard</h2>
-          {Object.keys(filters).length > 0 && (
-            <button 
-              onClick={clearFilters}
-              className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
-            >
-              Limpar Filtros
-            </button>
-          )}
-        </div>
+      <PageHeader title="Dashboard">
+        {Object.keys(filters).length > 0 && (
+          <button 
+            onClick={clearFilters}
+            className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
+          >
+            Limpar Filtros
+          </button>
+        )}
+      </PageHeader>
 
+      <div className="bg-white border-b border-gray-100 shadow-sm">
         {/* Excel-like Filter Bar */}
-        <div className="flex overflow-x-auto no-scrollbar px-4 pb-3 space-x-2">
+        <div className="flex overflow-x-auto no-scrollbar px-4 py-3 space-x-2">
           {Object.entries(FILTER_LABELS).map(([key, label]) => {
             const type = key as FilterType;
             const isSelected = (filters[type] || []).length > 0;
@@ -292,14 +311,15 @@ const DashboardPage: React.FC = () => {
                   dataKey="value"
                 >
                   {dataByStatus.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || "#94a3b8"} />
                   ))}
                 </Pie>
                 <Tooltip 
-                  formatter={(value: number) => [
-                    `${formatCurrency(value)} (${((value / totalValue) * 100).toFixed(1)}%)`,
-                    "Valor"
+                  formatter={(value: number, name: string) => [
+                    `${((value / totalValue) * 100).toFixed(1)}%`,
+                    name
                   ]}
+                  separator=" - "
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
                 <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
@@ -310,7 +330,7 @@ const DashboardPage: React.FC = () => {
 
         {/* Analysis Mode Toggle */}
         <div className="flex p-1 bg-gray-200 rounded-2xl">
-          {(['gestor', 'subGrupo', 'loja'] as const).map((mode) => (
+          {(['subGrupo', 'loja'] as const).map((mode) => (
             <button
               key={mode}
               onClick={() => setAnalysisMode(mode)}
@@ -328,7 +348,7 @@ const DashboardPage: React.FC = () => {
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-sm font-bold mb-4 flex items-center">
             <TrendingUp size={16} className="mr-2 text-gray-400" />
-            Top 5 {analysisMode === 'gestor' ? 'Gestores' : analysisMode === 'subGrupo' ? 'Subgrupos' : 'Lojas'} (Valor)
+            Top 5 {analysisMode === 'subGrupo' ? 'Subgrupos' : 'Lojas'} (Valor)
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -358,16 +378,16 @@ const DashboardPage: React.FC = () => {
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-sm font-bold mb-4 flex items-center">
             <TrendingUp size={16} className="mr-2 text-gray-400" />
-            Tendência Mensal por {analysisMode === 'gestor' ? 'Gestor' : analysisMode === 'subGrupo' ? 'Subgrupo' : 'Loja'}
+            Tendência Mensal por {analysisMode === 'subGrupo' ? 'Subgrupo' : 'Loja'}
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trendData}>
                 <defs>
-                  {COLORS.slice(0, 4).map((color, i) => (
-                    <linearGradient key={color} id={`color-${i}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={color} stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor={color} stopOpacity={0}/>
+                  {Object.keys(trendData[0] || {}).filter(k => k !== 'name' && k !== 'Total').map((key, i) => (
+                    <linearGradient key={key} id={`color-${i}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={["#000000", "#3b82f6", "#10b981", "#f59e0b"][i % 4]} stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor={["#000000", "#3b82f6", "#10b981", "#f59e0b"][i % 4]} stopOpacity={0}/>
                     </linearGradient>
                   ))}
                 </defs>
@@ -389,7 +409,7 @@ const DashboardPage: React.FC = () => {
                     key={key}
                     type="monotone" 
                     dataKey={key} 
-                    stroke={COLORS[i % COLORS.length]} 
+                    stroke={["#000000", "#3b82f6", "#10b981", "#f59e0b"][i % 4]} 
                     strokeWidth={2} 
                     fillOpacity={1} 
                     fill={`url(#color-${i})`} 

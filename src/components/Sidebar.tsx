@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutDashboard, Table, Database, Menu, X, CheckSquare } from "lucide-react";
+import { LayoutDashboard, Table, Database, Menu, X, CheckSquare, XSquare } from "lucide-react";
 import { cn } from "../lib/utils";
 
 interface SidebarProps {
@@ -11,7 +11,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "analysis", label: "Análise", icon: Table },
-    { id: "release", label: "Liberação", icon: CheckSquare },
+    { id: "release", label: "Liberar & Cancelar", icon: CheckSquare },
     { id: "sync", label: "Banco", icon: Database },
   ];
 
@@ -66,7 +66,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
             )}>
               <item.icon size={20} />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-tighter">{item.label}</span>
+            <span className="text-[10px] font-bold uppercase tracking-tighter">
+              {item.id === 'release' ? 'LIB. | CANC.' : item.label}
+            </span>
           </button>
         ))}
       </nav>

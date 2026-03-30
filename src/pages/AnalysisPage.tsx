@@ -1,10 +1,42 @@
 import React from "react";
-import { Search, ChevronDown, Table as TableIcon, Loader2, X, SlidersHorizontal, ArrowUpDown, Check, Filter } from "lucide-react";
+import { Search, ChevronDown, Table as TableIcon, Loader2, X, ArrowUpDown, Check } from "lucide-react";
 import { Order, FilterType, FILTER_LABELS, GroupedOrder } from "../types";
 import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
+import PageHeader from "../components/PageHeader";
+
+const ProductImage = ({ material }: { material: string }) => {
+  const [extension, setExtension] = React.useState<'png' | 'jpg' | 'error'>('png');
+  const imageUrl = `https://github.com/hugotjk/adidas-fla/blob/main/${material}.${extension === 'error' ? 'png' : extension}?raw=true`;
+
+  if (extension === 'error') {
+    return (
+      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 flex-shrink-0">
+        <span className="text-[8px] font-black text-gray-400 uppercase text-center leading-tight">SEM<br/>FOTO</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-16 h-16 bg-white rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center flex-shrink-0">
+      <img 
+        src={imageUrl} 
+        alt={material}
+        onError={() => {
+          if (extension === 'png') {
+            setExtension('jpg');
+          } else {
+            setExtension('error');
+          }
+        }}
+        className="w-full h-full object-contain"
+        referrerPolicy="no-referrer"
+      />
+    </div>
+  );
+};
 
 const AnalysisPage: React.FC = () => {
   const { filters, updateFilter, clearFilters } = useFilters();
@@ -137,20 +169,19 @@ const AnalysisPage: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-tight">Análise</h2>
-          {Object.keys(filters).length > 0 && (
-            <button 
-              onClick={clearFilters}
-              className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
-            >
-              Limpar Filtros
-            </button>
-          )}
-        </div>
-        
-        <div className="px-4 pb-3">
+      <PageHeader title="Análise">
+        {Object.keys(filters).length > 0 && (
+          <button 
+            onClick={clearFilters}
+            className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
+          >
+            Limpar Filtros
+          </button>
+        )}
+      </PageHeader>
+      
+      <div className="bg-white border-b border-gray-100 shadow-sm">
+        <div className="px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
@@ -326,12 +357,30 @@ const AnalysisPage: React.FC = () => {
                 expandedMaterial === group.material ? "ring-1 ring-black/5" : ""
               )}
             >
-              <div className="p-3">
-                <div className="flex justify-between items-start gap-2">
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{group.material}</span>
-                    <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{group.materialDescription}</h3>
+              <div className="p-3 flex gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{group.material}</span>
+                      <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{group.materialDescription}</h3>
+                    </div>
                   </div>
+                  
+                  <div className="flex justify-between items-end mt-2 pt-2 border-t border-gray-50">
+                    <div className="flex space-x-4">
+                      <div>
+                        <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde</p>
+                        <p className="text-xs font-black">{formatNumber(group.qtdeConfirmada)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Valor</p>
+                        <p className="text-xs font-black text-black">{formatCurrency(group.valorNF)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end justify-between">
                   <ChevronDown 
                     size={14} 
                     className={cn(
@@ -339,20 +388,7 @@ const AnalysisPage: React.FC = () => {
                       expandedMaterial === group.material && "rotate-180 text-black"
                     )} 
                   />
-                </div>
-                
-                <div className="flex justify-between items-end mt-2 pt-2 border-t border-gray-50">
-                  <div className="flex space-x-4">
-                    <div>
-                      <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde</p>
-                      <p className="text-xs font-black">{formatNumber(group.qtdeConfirmada)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Valor</p>
-                      <p className="text-xs font-black text-black">{formatCurrency(group.valorNF)}</p>
-                    </div>
-                  </div>
-                  <span className="text-[8px] font-bold text-gray-300 uppercase">{group.colecao}</span>
+                  <ProductImage material={group.material} />
                 </div>
               </div>
 
