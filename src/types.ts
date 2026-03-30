@@ -9,9 +9,11 @@ export interface Order {
   mesRecebMaterial: string;
   material: string;
   materialDescription: string;
+  pedido: string;
   qtdeConfirmada: number;
   valorNF: number;
   syncDate?: string;
+  originalRow?: any;
 }
 
 export interface GroupedOrder {

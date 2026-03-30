@@ -15,6 +15,20 @@ const AnalysisPage: React.FC = () => {
   const [sortBy, setSortBy] = React.useState<keyof GroupedOrder>("valorNF");
   const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("desc");
   const [expandedMaterial, setExpandedMaterial] = React.useState<string | null>(null);
+  const [expandedStatus, setExpandedStatus] = React.useState<string | null>(null);
+
+  const parseMonthYear = (monthYear: string) => {
+    if (monthYear.includes("-")) {
+      const [y, m] = monthYear.split("-");
+      return new Date(parseInt(y), parseInt(m) - 1);
+    }
+    const months: Record<string, number> = {
+      'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
+      'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
+    };
+    const [m, y] = monthYear.split('/');
+    return new Date(parseInt(y), months[m.toUpperCase()] || 0);
+  };
 
   const getFilterOptions = (filterType: FilterType) => {
     const otherFilters = { ...filters };
@@ -302,7 +316,11 @@ const AnalysisPage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(idx * 0.01, 0.2) }}
               key={group.material} 
-              onClick={() => setExpandedMaterial(expandedMaterial === group.material ? null : group.material)}
+              onClick={() => {
+                const isExpanding = expandedMaterial !== group.material;
+                setExpandedMaterial(isExpanding ? group.material : null);
+                setExpandedStatus(null); // Reset nested accordion
+              }}
               className={cn(
                 "bg-white rounded-xl border border-gray-100 shadow-sm active:scale-[0.99] transition-all overflow-hidden",
                 expandedMaterial === group.material ? "ring-1 ring-black/5" : ""
@@ -356,24 +374,80 @@ const AnalysisPage: React.FC = () => {
                       {Object.entries(
                         group.items.reduce((acc, item) => {
                           if (!acc[item.status]) {
-                            acc[item.status] = { qtde: 0, valor: 0 };
+                            acc[item.status] = { qtde: 0, valor: 0, items: [] };
                           }
                           acc[item.status].qtde += item.qtdeConfirmada;
                           acc[item.status].valor += item.valorNF;
+                          acc[item.status].items.push(item);
                           return acc;
-                        }, {} as Record<string, { qtde: number; valor: number }>)
-                      ).map(([status, data]: [string, any]) => (
-                        <div key={status} className="grid grid-cols-3 gap-2 items-center py-1">
-                          <span className={cn(
-                            "text-[9px] font-bold truncate px-1.5 py-0.5 rounded-md w-fit",
-                            status.toLowerCase().includes("pendente") ? "bg-amber-100 text-amber-700" :
-                            status.toLowerCase().includes("cancelado") ? "bg-red-100 text-red-700" :
-                            "bg-green-100 text-green-700"
-                          )}>
-                            {status}
-                          </span>
-                          <span className="text-[10px] font-bold text-right text-gray-600">{formatNumber(data.qtde)}</span>
-                          <span className="text-[10px] font-black text-right">{formatCurrency(data.valor)}</span>
+                        }, {} as Record<string, { qtde: number; valor: number; items: Order[] }>)
+                      )
+                      .sort((a: [string, any], b: [string, any]) => b[1].valor - a[1].valor) // Sort by value DESC
+                      .map(([status, data]: [string, any]) => (
+                        <div key={status} className="flex flex-col border-b border-gray-100 last:border-0">
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedStatus(expandedStatus === status ? null : status);
+                            }}
+                            className="grid grid-cols-3 gap-2 items-center py-2 active:bg-gray-100 transition-colors cursor-pointer"
+                          >
+                            <div className="flex items-center space-x-1 min-w-0">
+                              <ChevronDown 
+                                size={10} 
+                                className={cn(
+                                  "text-gray-400 transition-transform flex-shrink-0",
+                                  expandedStatus === status && "rotate-180 text-black"
+                                )} 
+                              />
+                              <span className={cn(
+                                "text-[9px] font-bold truncate px-1.5 py-0.5 rounded-md",
+                                status.toLowerCase().includes("pendente") ? "bg-amber-100 text-amber-700" :
+                                status.toLowerCase().includes("cancelado") ? "bg-red-100 text-red-700" :
+                                "bg-green-100 text-green-700"
+                              )}>
+                                {status}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-bold text-right text-gray-600">{formatNumber(data.qtde)}</span>
+                            <span className="text-[10px] font-black text-right">{formatCurrency(data.valor)}</span>
+                          </div>
+
+                          <AnimatePresence>
+                            {expandedStatus === status && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="bg-white/50 rounded-lg mb-2 overflow-hidden"
+                              >
+                                <div className="p-2 space-y-1.5">
+                                  <div className="grid grid-cols-3 gap-2 text-[7px] font-black text-gray-400 uppercase tracking-tighter pb-1 border-b border-gray-100">
+                                    <span>Mês Receb.</span>
+                                    <span className="text-right">Qtde</span>
+                                    <span className="text-right">Valor</span>
+                                  </div>
+                                  {Object.entries(
+                                    data.items.reduce((acc: any, item: Order) => {
+                                      const key = item.mesRecebMaterial;
+                                      if (!acc[key]) acc[key] = { qtde: 0, valor: 0 };
+                                      acc[key].qtde += item.qtdeConfirmada;
+                                      acc[key].valor += item.valorNF;
+                                      return acc;
+                                    }, {} as Record<string, { qtde: number; valor: number }>)
+                                  )
+                                  .sort((a, b) => parseMonthYear(a[0]).getTime() - parseMonthYear(b[0]).getTime()) // Oldest first
+                                  .map(([month, mData]: [string, any]) => (
+                                    <div key={month} className="grid grid-cols-3 gap-2 text-[9px]">
+                                      <span className="text-gray-500 font-medium">{month}</span>
+                                      <span className="text-right font-bold text-gray-700">{formatNumber(mData.qtde)}</span>
+                                      <span className="text-right font-black">{formatCurrency(mData.valor)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       ))}
                     </div>

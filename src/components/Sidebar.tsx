@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutDashboard, Table, Database, Menu, X } from "lucide-react";
+import { LayoutDashboard, Table, Database, Menu, X, CheckSquare } from "lucide-react";
 import { cn } from "../lib/utils";
 
 interface SidebarProps {
@@ -11,6 +11,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "analysis", label: "Análise", icon: Table },
+    { id: "release", label: "Liberação", icon: CheckSquare },
     { id: "sync", label: "Banco", icon: Database },
   ];
 

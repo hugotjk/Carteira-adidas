@@ -38,8 +38,10 @@ export async function fetchSheetData(): Promise<Order[]> {
             mesRecebMaterial: row["Mês Receb do Material"] || row["MES RECEB MATERIAL"] || "",
             material: row["Material"] || row["MATERIAL"] || "",
             materialDescription: row["Material Description"] || row["MATERIAL DESCRIPTION"] || "",
+            pedido: row["Pedido"] || row["PEDIDO"] || row["Order"] || row["ORDER"] || "",
             qtdeConfirmada: parseNumber(row["Qtde Confirmada"] || row["QTDE CONFIRMADA"]),
             valorNF: parseNumber(row[aeHeader] || row["valor nf"] || row["VALOR NF"]),
+            originalRow: row,
           }));
           resolve(orders);
         },

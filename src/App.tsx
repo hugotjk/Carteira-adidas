@@ -2,6 +2,7 @@ import React from "react";
 import Sidebar from "./components/Sidebar";
 import DashboardPage from "./pages/DashboardPage";
 import AnalysisPage from "./pages/AnalysisPage";
+import ReleasePage from "./pages/ReleasePage";
 import SyncPage from "./pages/SyncPage";
 import { autoSyncIfNecessary } from "./services/dataService";
 import { FilterProvider } from "./context/FilterContext";
@@ -21,6 +22,8 @@ export default function App() {
         return <DashboardPage />;
       case "analysis":
         return <AnalysisPage />;
+      case "release":
+        return <ReleasePage />;
       case "sync":
         return <SyncPage />;
       default:
