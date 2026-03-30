@@ -5,6 +5,7 @@ export interface Order {
   subGrupo: string;
   colecao: string;
   status: string;
+  tipoLoja: string;
   dataLancamento: string;
   mesRecebMaterial: string;
   material: string;
@@ -37,7 +38,7 @@ export type FilterType = keyof Pick<
   | "subGrupo"
   | "colecao"
   | "status"
-  | "dataLancamento"
+  | "tipoLoja"
   | "mesRecebMaterial"
 >;
 
@@ -49,6 +50,6 @@ export const FILTER_LABELS: Record<FilterType, string> = {
   subGrupo: "SubGrupo",
   colecao: "Coleção",
   status: "Status",
-  dataLancamento: "Data de Lançamento",
+  tipoLoja: "Tipo Loja",
   mesRecebMaterial: "Mês Receb. Material",
 };

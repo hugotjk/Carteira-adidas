@@ -51,6 +51,7 @@ export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDat
           const ayHeader = fields[50]; // Column AY is index 50
           const azHeader = fields[51]; // Column AZ is index 51
           const baHeader = fields[52]; // Column BA is index 52
+          const bbHeader = fields[53]; // Column BB is index 53
           const apHeader = fields[41]; // Column AP is index 41 (AP2 is first data row)
           const qHeader = fields[16]; // Column Q is index 16
 
@@ -76,6 +77,7 @@ export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDat
             subGrupo: row["SubGrupo"] || row["SUBGRUPO"] || "",
             colecao: row["Colecao"] || row["COLECAO"] || "",
             status: row["Status"] || row["STATUS"] || "",
+            tipoLoja: row[bbHeader] || row["Tipo Loja"] || row["TIPO LOJA"] || "",
             dataLancamento: row[qHeader] || row["Data de Lancamento"] || row["DATA LANCAMENTO"] || "",
             mesRecebMaterial: row["Mês Receb do Material"] || row["MES RECEB MATERIAL"] || "",
             material: row["Material"] || row["MATERIAL"] || "",
