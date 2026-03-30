@@ -1,5 +1,5 @@
 {
-  "name": "Adidas Order Backlog Analyzer",
+  "name": "Carteira adidas",
   "description": "App para análise de carteira de pedidos Adidas com sincronização de dados e dashboards.",
   "requestFramePermissions": []
 }

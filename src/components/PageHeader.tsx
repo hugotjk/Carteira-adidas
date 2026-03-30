@@ -1,6 +1,6 @@
 import React from "react";
 import { useData } from "../context/DataContext";
-import { fetchSheetData, saveOrdersLocally } from "../services/dataService";
+import { fetchSheetData, saveOrdersLocally, fetchGitHubImages } from "../services/dataService";
 import { Loader2 } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -17,8 +17,11 @@ const PageHeader: React.FC<PageHeaderProps> = ({ title, children }) => {
     if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const { orders, dataSourceDate } = await fetchSheetData();
-      await saveOrdersLocally(orders, dataSourceDate);
+      const [sheetResult, imageMap] = await Promise.all([
+        fetchSheetData(),
+        fetchGitHubImages()
+      ]);
+      await saveOrdersLocally(sheetResult.orders, sheetResult.dataSourceDate, imageMap);
       await refreshData();
     } catch (error) {
       console.error("Sync error:", error);

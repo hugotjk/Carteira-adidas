@@ -19,11 +19,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
     <>
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-100 flex-col">
-        <div className="p-8 flex items-center space-x-3">
-          <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center">
-            <span className="text-white font-bold text-xl italic">a</span>
-          </div>
-          <h1 className="text-xl font-bold tracking-tight">Adidas Orders</h1>
+        <div className="p-8">
+          <h1 className="text-xl font-bold tracking-tight">Carteira adidas</h1>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4">
@@ -44,8 +41,9 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           ))}
         </nav>
 
-        <div className="p-8 border-t border-gray-50">
+        <div className="p-8 border-t border-gray-50 space-y-1">
           <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">© 2026 Adidas Analyzer</p>
+          <p className="text-[9px] font-medium text-gray-400 italic">by Hugo Alves</p>
         </div>
       </aside>
 

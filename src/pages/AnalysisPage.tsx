@@ -8,10 +8,10 @@ import { useData } from "../context/DataContext";
 import PageHeader from "../components/PageHeader";
 
 const ProductImage = ({ material }: { material: string }) => {
-  const [extension, setExtension] = React.useState<'png' | 'jpg' | 'error'>('png');
-  const imageUrl = `https://github.com/hugotjk/adidas-fla/blob/main/${material}.${extension === 'error' ? 'png' : extension}?raw=true`;
-
-  if (extension === 'error') {
+  const { imageMap } = useData();
+  const extension = imageMap[material];
+  
+  if (!extension) {
     return (
       <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 flex-shrink-0">
         <span className="text-[8px] font-black text-gray-400 uppercase text-center leading-tight">SEM<br/>FOTO</span>
@@ -19,18 +19,13 @@ const ProductImage = ({ material }: { material: string }) => {
     );
   }
 
+  const imageUrl = `https://raw.githubusercontent.com/hugotjk/adidas-fla/main/${material}.${extension}`;
+
   return (
     <div className="w-16 h-16 bg-white rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center flex-shrink-0">
       <img 
         src={imageUrl} 
         alt={material}
-        onError={() => {
-          if (extension === 'png') {
-            setExtension('jpg');
-          } else {
-            setExtension('error');
-          }
-        }}
         className="w-full h-full object-contain"
         referrerPolicy="no-referrer"
       />

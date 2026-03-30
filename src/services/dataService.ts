@@ -3,6 +3,36 @@ import { get, set } from "idb-keyval";
 import { Order } from "../types";
 
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/1h302iCGdzxpayOumFfqU0MD-KlukMVWVadpZYy1-RF4/export?format=csv";
+const GITHUB_API_URL = "https://api.github.com/repos/hugotjk/adidas-fla/contents/";
+
+export async function fetchGitHubImages(): Promise<Record<string, string>> {
+  try {
+    const response = await fetch(GITHUB_API_URL);
+    if (!response.ok) return {};
+    const files = await response.json();
+    
+    const imageMap: Record<string, string> = {};
+    if (Array.isArray(files)) {
+      files.forEach((file: any) => {
+        if (file.type === "file") {
+          const name = file.name.toLowerCase();
+          if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+            const material = file.name.split(".")[0];
+            const ext = file.name.split(".").pop();
+            // Prefer PNG if both exist, or just take the first one found
+            if (!imageMap[material] || ext === "png") {
+              imageMap[material] = ext;
+            }
+          }
+        }
+      });
+    }
+    return imageMap;
+  } catch (error) {
+    console.error("Error fetching GitHub images:", error);
+    return {};
+  }
+}
 
 export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDate: string }> {
   try {
@@ -72,9 +102,12 @@ export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDat
   }
 }
 
-export async function saveOrdersLocally(orders: Order[], dataSourceDate?: string) {
+export async function saveOrdersLocally(orders: Order[], dataSourceDate?: string, imageMap?: Record<string, string>) {
   // Use IndexedDB via idb-keyval for larger storage capacity
   await set("orders", orders);
+  if (imageMap) {
+    await set("imageMap", imageMap);
+  }
   localStorage.setItem("lastSyncTimestamp", Date.now().toString());
   localStorage.setItem("lastSyncDate", new Date().toLocaleString("pt-BR"));
   if (dataSourceDate) {
@@ -87,15 +120,23 @@ export async function getOrdersLocally(): Promise<Order[]> {
   return saved || [];
 }
 
+export async function getImageMapLocally(): Promise<Record<string, string>> {
+  const saved = await get<Record<string, string>>("imageMap");
+  return saved || {};
+}
+
 export async function autoSyncIfNecessary() {
   const lastSync = localStorage.getItem("lastSyncTimestamp");
   const twelveHours = 12 * 60 * 60 * 1000;
   
   if (!lastSync || (Date.now() - parseInt(lastSync)) > twelveHours) {
-    console.log("Auto-syncing data from Google Sheets...");
+    console.log("Auto-syncing data from Google Sheets and GitHub...");
     try {
-      const { orders, dataSourceDate } = await fetchSheetData();
-      await saveOrdersLocally(orders, dataSourceDate);
+      const [{ orders, dataSourceDate }, imageMap] = await Promise.all([
+        fetchSheetData(),
+        fetchGitHubImages()
+      ]);
+      await saveOrdersLocally(orders, dataSourceDate, imageMap);
       return orders;
     } catch (error) {
       console.error("Auto-sync failed:", error);
