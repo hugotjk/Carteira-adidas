@@ -14,6 +14,7 @@ const AnalysisPage: React.FC = () => {
   const [filterSearch, setFilterSearch] = React.useState("");
   const [sortBy, setSortBy] = React.useState<keyof GroupedOrder>("valorNF");
   const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("desc");
+  const [expandedMaterial, setExpandedMaterial] = React.useState<string | null>(null);
 
   const getFilterOptions = (filterType: FilterType) => {
     const otherFilters = { ...filters };
@@ -301,36 +302,84 @@ const AnalysisPage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(idx * 0.01, 0.2) }}
               key={group.material} 
-              className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm active:scale-[0.99] transition-transform"
+              onClick={() => setExpandedMaterial(expandedMaterial === group.material ? null : group.material)}
+              className={cn(
+                "bg-white rounded-xl border border-gray-100 shadow-sm active:scale-[0.99] transition-all overflow-hidden",
+                expandedMaterial === group.material ? "ring-1 ring-black/5" : ""
+              )}
             >
-              <div className="flex justify-between items-start gap-2">
-                <div className="flex flex-col min-w-0">
-                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{group.material}</span>
-                  <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{group.materialDescription}</h3>
-                </div>
-                <span className={cn(
-                  "flex-shrink-0 px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-tighter",
-                  group.status.toLowerCase().includes("pendente") ? "bg-amber-100 text-amber-700" :
-                  group.status.toLowerCase().includes("cancelado") ? "bg-red-100 text-red-700" :
-                  "bg-green-100 text-green-700"
-                )}>
-                  {group.status}
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-end mt-2 pt-2 border-t border-gray-50">
-                <div className="flex space-x-4">
-                  <div>
-                    <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde</p>
-                    <p className="text-xs font-black">{formatNumber(group.qtdeConfirmada)}</p>
+              <div className="p-3">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{group.material}</span>
+                    <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{group.materialDescription}</h3>
                   </div>
-                  <div>
-                    <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Valor</p>
-                    <p className="text-xs font-black text-black">{formatCurrency(group.valorNF)}</p>
-                  </div>
+                  <ChevronDown 
+                    size={14} 
+                    className={cn(
+                      "text-gray-300 transition-transform duration-300",
+                      expandedMaterial === group.material && "rotate-180 text-black"
+                    )} 
+                  />
                 </div>
-                <span className="text-[8px] font-bold text-gray-300 uppercase">{group.colecao}</span>
+                
+                <div className="flex justify-between items-end mt-2 pt-2 border-t border-gray-50">
+                  <div className="flex space-x-4">
+                    <div>
+                      <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde</p>
+                      <p className="text-xs font-black">{formatNumber(group.qtdeConfirmada)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-0.5">Valor</p>
+                      <p className="text-xs font-black text-black">{formatCurrency(group.valorNF)}</p>
+                    </div>
+                  </div>
+                  <span className="text-[8px] font-bold text-gray-300 uppercase">{group.colecao}</span>
+                </div>
               </div>
+
+              <AnimatePresence>
+                {expandedMaterial === group.material && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                    className="bg-gray-50/50 border-t border-gray-100"
+                  >
+                    <div className="p-3 space-y-2">
+                      <div className="grid grid-cols-3 gap-2 text-[8px] font-black text-gray-400 uppercase tracking-widest pb-1 border-b border-gray-200/50">
+                        <span>Status</span>
+                        <span className="text-right">Qtde</span>
+                        <span className="text-right">Valor</span>
+                      </div>
+                      {Object.entries(
+                        group.items.reduce((acc, item) => {
+                          if (!acc[item.status]) {
+                            acc[item.status] = { qtde: 0, valor: 0 };
+                          }
+                          acc[item.status].qtde += item.qtdeConfirmada;
+                          acc[item.status].valor += item.valorNF;
+                          return acc;
+                        }, {} as Record<string, { qtde: number; valor: number }>)
+                      ).map(([status, data]: [string, any]) => (
+                        <div key={status} className="grid grid-cols-3 gap-2 items-center py-1">
+                          <span className={cn(
+                            "text-[9px] font-bold truncate px-1.5 py-0.5 rounded-md w-fit",
+                            status.toLowerCase().includes("pendente") ? "bg-amber-100 text-amber-700" :
+                            status.toLowerCase().includes("cancelado") ? "bg-red-100 text-red-700" :
+                            "bg-green-100 text-green-700"
+                          )}>
+                            {status}
+                          </span>
+                          <span className="text-[10px] font-bold text-right text-gray-600">{formatNumber(data.qtde)}</span>
+                          <span className="text-[10px] font-black text-right">{formatCurrency(data.valor)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           ))
         ) : (
