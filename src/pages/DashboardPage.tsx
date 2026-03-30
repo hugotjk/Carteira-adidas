@@ -17,6 +17,7 @@ const DashboardPage: React.FC = () => {
   const { allOrders, loading } = useData();
   const [activeFilter, setActiveFilter] = React.useState<FilterType | null>(null);
   const [filterSearch, setFilterSearch] = React.useState("");
+  const [analysisMode, setAnalysisMode] = React.useState<'gestor' | 'subGrupo' | 'loja'>('gestor');
 
   const getFilterOptions = (filterType: FilterType) => {
     const otherFilters = { ...filters };
@@ -73,24 +74,39 @@ const DashboardPage: React.FC = () => {
     return Object.entries(agg).map(([name, value]) => ({ name, value }));
   }, [filteredOrders]);
 
-  const dataByGestor = React.useMemo(() => {
+  const topData = React.useMemo(() => {
     const agg: Record<string, number> = {};
     filteredOrders.forEach((o) => {
-      agg[o.gestor] = (agg[o.gestor] || 0) + o.valorNF;
+      const key = o[analysisMode];
+      agg[key] = (agg[key] || 0) + o.valorNF;
     });
     return Object.entries(agg)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [filteredOrders]);
+  }, [filteredOrders, analysisMode]);
 
-  const dataByMonth = React.useMemo(() => {
-    const agg: Record<string, number> = {};
-    filteredOrders.forEach((o) => {
-      agg[o.mesRecebMaterial] = (agg[o.mesRecebMaterial] || 0) + o.valorNF;
+  const trendData = React.useMemo(() => {
+    const topItems = topData.slice(0, 3).map(d => d.name);
+    const months = Array.from(new Set(filteredOrders.map(o => o.mesRecebMaterial))).sort((a, b) => {
+      // Simple sort for months if needed, but they are usually chronological in the data
+      return a.localeCompare(b); 
     });
-    return Object.entries(agg).map(([name, value]) => ({ name, value }));
-  }, [filteredOrders]);
+
+    return months.map(month => {
+      const data: any = { name: month };
+      topItems.forEach(item => {
+        data[item] = filteredOrders
+          .filter(o => o.mesRecebMaterial === month && o[analysisMode] === item)
+          .reduce((sum, o) => sum + o.valorNF, 0);
+      });
+      // Add total as well
+      data.Total = filteredOrders
+        .filter(o => o.mesRecebMaterial === month)
+        .reduce((sum, o) => sum + o.valorNF, 0);
+      return data;
+    });
+  }, [filteredOrders, topData, analysisMode]);
 
   if (loading) {
     return (
@@ -280,7 +296,10 @@ const DashboardPage: React.FC = () => {
                   ))}
                 </Pie>
                 <Tooltip 
-                  formatter={(value: number) => formatCurrency(value)}
+                  formatter={(value: number) => [
+                    `${formatCurrency(value)} (${((value / totalValue) * 100).toFixed(1)}%)`,
+                    "Valor"
+                  ]}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
                 <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
@@ -289,15 +308,31 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Manager Chart */}
+        {/* Analysis Mode Toggle */}
+        <div className="flex p-1 bg-gray-200 rounded-2xl">
+          {(['gestor', 'subGrupo', 'loja'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setAnalysisMode(mode)}
+              className={cn(
+                "flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all",
+                analysisMode === mode ? "bg-white text-black shadow-sm" : "text-gray-400"
+              )}
+            >
+              {mode === 'subGrupo' ? 'Subgrupo' : mode}
+            </button>
+          ))}
+        </div>
+
+        {/* Top 5 Chart */}
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-sm font-bold mb-4 flex items-center">
             <TrendingUp size={16} className="mr-2 text-gray-400" />
-            Top 5 Gestores (Valor)
+            Top 5 {analysisMode === 'gestor' ? 'Gestores' : analysisMode === 'subGrupo' ? 'Subgrupos' : 'Lojas'} (Valor)
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dataByGestor} layout="vertical" margin={{ left: 0, right: 30 }}>
+              <BarChart data={topData} layout="vertical" margin={{ left: 0, right: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                 <XAxis type="number" hide />
                 <YAxis 
@@ -323,16 +358,18 @@ const DashboardPage: React.FC = () => {
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-sm font-bold mb-4 flex items-center">
             <TrendingUp size={16} className="mr-2 text-gray-400" />
-            Tendência Mensal
+            Tendência Mensal por {analysisMode === 'gestor' ? 'Gestor' : analysisMode === 'subGrupo' ? 'Subgrupo' : 'Loja'}
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dataByMonth}>
+              <AreaChart data={trendData}>
                 <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#000000" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#000000" stopOpacity={0}/>
-                  </linearGradient>
+                  {COLORS.slice(0, 4).map((color, i) => (
+                    <linearGradient key={color} id={`color-${i}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={color} stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor={color} stopOpacity={0}/>
+                    </linearGradient>
+                  ))}
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                 <XAxis 
@@ -346,7 +383,19 @@ const DashboardPage: React.FC = () => {
                   formatter={(value: number) => formatCurrency(value)}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
-                <Area type="monotone" dataKey="value" stroke="#000000" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" />
+                <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '9px', fontWeight: 'bold', marginBottom: '10px' }} />
+                {Object.keys(trendData[0] || {}).filter(k => k !== 'name' && k !== 'Total').map((key, i) => (
+                  <Area 
+                    key={key}
+                    type="monotone" 
+                    dataKey={key} 
+                    stroke={COLORS[i % COLORS.length]} 
+                    strokeWidth={2} 
+                    fillOpacity={1} 
+                    fill={`url(#color-${i})`} 
+                    stackId="1"
+                  />
+                ))}
               </AreaChart>
             </ResponsiveContainer>
           </div>
