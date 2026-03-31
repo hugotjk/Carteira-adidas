@@ -13,5 +13,7 @@ export function formatCurrency(value: number) {
 }
 
 export function formatNumber(value: number) {
-  return new Intl.NumberFormat("pt-BR").format(value);
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 0,
+  }).format(value);
 }

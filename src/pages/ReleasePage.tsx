@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useDeferredValue } from "react";
 import { Search, ChevronDown, Loader2, X, Check, Share2, Plus } from "lucide-react";
 import { Order, FilterType, FILTER_LABELS } from "../types";
 import { cn, formatCurrency, formatNumber } from "../lib/utils";
@@ -10,111 +10,354 @@ import PageHeader from "../components/PageHeader";
 
 const PAGE_SIZE = 50;
 
+const ProductImage = ({ material }: { material: string }) => {
+  const { imageMap } = useData();
+  const extension = imageMap[material];
+  
+  if (!extension) {
+    return (
+      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 flex-shrink-0">
+        <span className="text-[6px] font-black text-gray-400 uppercase text-center leading-tight">SEM<br/>FOTO</span>
+      </div>
+    );
+  }
+
+  const imageUrl = `https://raw.githubusercontent.com/hugotjk/adidas-fla/main/${material}.${extension}`;
+
+  return (
+    <div className="w-12 h-12 bg-white rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center flex-shrink-0">
+      <img 
+        src={imageUrl} 
+        alt={material}
+        className="w-full h-full object-contain"
+        referrerPolicy="no-referrer"
+      />
+    </div>
+  );
+};
+
+interface MaterialGroup {
+  material: string;
+  materialDescription: string;
+  totalQty: number;
+  totalValue: number;
+  avgVenda: number;
+  avgEstoque: number;
+  avgMediaVenda: number;
+  avgEstoqueGestor: number;
+  orders: Order[];
+}
+
+const StoreRow = React.memo(({ 
+  order, 
+  isSelected, 
+  onToggle 
+}: { 
+  order: Order; 
+  isSelected: boolean; 
+  onToggle: (id: string, e: React.MouseEvent) => void 
+}) => (
+  <div 
+    onClick={(e) => onToggle(order.id!, e)}
+    className={cn(
+      "bg-white/60 p-2.5 rounded-xl border transition-all flex items-center space-x-3 cursor-pointer",
+      isSelected ? "border-black/40 bg-black/[0.01]" : "border-gray-100"
+    )}
+  >
+    <div className={cn(
+      "flex-shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition-colors",
+      isSelected ? "bg-black border-black text-white" : "border-gray-200 text-transparent"
+    )}>
+      <Check size={12} />
+    </div>
+
+    <div className="flex-1 min-w-0">
+      <div className="flex justify-between items-start">
+        <div className="flex items-center space-x-2">
+          <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">{order.pedido}</span>
+          <span className="text-[8px] font-bold text-blue-500 uppercase tracking-wider bg-blue-50 px-1 rounded">{order.loja}</span>
+        </div>
+        <span className="text-[8px] font-bold text-gray-400">{order.mesRecebMaterial}</span>
+      </div>
+      
+      <div className="grid grid-cols-3 gap-x-3 mt-1 pt-1 border-t border-gray-50/50">
+        <div className="flex flex-col">
+          <p className="text-[6px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde | Valor</p>
+          <p className="text-[9px] font-black leading-none">
+            {formatNumber(order.qtdeConfirmada)} <span className="text-gray-300 mx-0.5">|</span> {formatCurrency(order.valorNF)}
+          </p>
+        </div>
+        <div className="flex flex-col">
+          <p className="text-[6px] font-bold text-gray-400 uppercase leading-none mb-0.5">Venda | Estq</p>
+          <p className="text-[9px] font-black leading-none">
+            {formatNumber(order.venda)} <span className="text-gray-300 mx-0.5">|</span> {formatNumber(order.estoque)}
+          </p>
+        </div>
+        <div className="flex flex-col">
+          <p className="text-[6px] font-bold text-gray-400 uppercase leading-none mb-0.5">Venda G. | Estq G.</p>
+          <p className="text-[9px] font-black leading-none text-orange-600">
+            {formatNumber(order.mediaVenda)} <span className="text-gray-300 mx-0.5">|</span> {formatNumber(order.estoqueGestor)}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+));
+
+const MaterialCard = React.memo(({ 
+  group, 
+  isExpanded, 
+  allSelected, 
+  someSelected, 
+  onToggleExpansion, 
+  onToggleSelection,
+  selectedIds,
+  onToggleOrderSelection
+}: { 
+  group: MaterialGroup; 
+  isExpanded: boolean; 
+  allSelected: boolean; 
+  someSelected: boolean; 
+  onToggleExpansion: (material: string) => void;
+  onToggleSelection: (group: MaterialGroup, e: React.MouseEvent) => void;
+  selectedIds: Set<string>;
+  onToggleOrderSelection: (id: string, e: React.MouseEvent) => void;
+}) => (
+  <div className="flex flex-col space-y-2">
+    <div 
+      onClick={() => onToggleExpansion(group.material)}
+      className={cn(
+        "bg-white p-3 rounded-xl border transition-all flex items-center space-x-3 cursor-pointer",
+        isExpanded ? "border-black shadow-md" : "border-gray-100"
+      )}
+    >
+      <div 
+        onClick={(e) => onToggleSelection(group, e)}
+        className={cn(
+          "flex-shrink-0 w-6 h-6 rounded-lg border flex items-center justify-center transition-colors",
+          allSelected ? "bg-black border-black text-white" : someSelected ? "bg-gray-200 border-gray-300 text-black" : "border-gray-200 text-transparent"
+        )}
+      >
+        {allSelected ? <Check size={14} /> : someSelected ? <div className="w-2 h-0.5 bg-black" /> : null}
+      </div>
+
+      <div className="flex-1 min-w-0 flex gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{group.material}</span>
+            <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{group.materialDescription}</h3>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5 pt-1.5 border-t border-gray-50">
+            <div className="flex flex-col">
+              <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde | Valor</p>
+              <p className="text-[10px] font-black leading-none">
+                {formatNumber(group.totalQty)} <span className="text-gray-300 mx-1">|</span> {formatCurrency(group.totalValue)}
+              </p>
+            </div>
+            <div className="flex flex-col">
+              <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Venda G. | Estq G.</p>
+              <p className="text-[10px] font-black leading-none text-orange-600">
+                {formatNumber(group.avgMediaVenda)} <span className="text-gray-300 mx-1">|</span> {formatNumber(group.avgEstoqueGestor)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-end justify-between self-stretch">
+          <ChevronDown size={14} className={cn("text-gray-400 transition-transform", isExpanded && "rotate-180")} />
+          <ProductImage material={group.material} />
+        </div>
+      </div>
+    </div>
+
+    <AnimatePresence>
+      {isExpanded && (
+        <motion.div 
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          className="overflow-hidden flex flex-col space-y-1.5 pl-4"
+        >
+          {group.orders.map((order) => (
+            <StoreRow 
+              key={order.id} 
+              order={order} 
+              isSelected={selectedIds.has(order.id!)}
+              onToggle={onToggleOrderSelection}
+            />
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
+));
+
 const ReleasePage: React.FC = () => {
   const { filters, updateFilter, clearFilters } = useFilters();
   const { allOrders, loading } = useData();
   const [searchTerm, setSearchTerm] = React.useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [activeFilter, setActiveFilter] = React.useState<FilterType | null>(null);
   const [filterSearch, setFilterSearch] = React.useState("");
-  const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
   const [isSummaryOpen, setIsSummaryOpen] = React.useState(false);
   const [summaryGroupBy, setSummaryGroupBy] = React.useState<'material' | 'subGrupo' | 'loja'>('material');
+  const [expandedMaterials, setExpandedMaterials] = React.useState<Set<string>>(new Set());
 
-  const parseMonthYear = (monthYear: string) => {
-    if (monthYear.includes("-")) {
-      const [y, m] = monthYear.split("-");
-      return new Date(parseInt(y), parseInt(m) - 1);
-    }
-    const months: Record<string, number> = {
-      'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
-      'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
-    };
-    const parts = monthYear.split('/');
-    if (parts.length === 2) {
-      const [m, y] = parts;
-      return new Date(parseInt(y), months[m.toUpperCase()] || 0);
-    }
-    return new Date(0);
-  };
-
-  const getFilterOptions = (filterType: FilterType) => {
+  const filterOptions = React.useMemo(() => {
+    if (!activeFilter) return [];
+    
     const otherFilters = { ...filters };
-    delete otherFilters[filterType];
+    delete otherFilters[activeFilter];
     let filteredForOptions = allOrders;
-    Object.entries(otherFilters).forEach(([key, values]) => {
-      const filterValues = values as string[] | undefined;
-      if (filterValues && filterValues.length > 0) {
-        filteredForOptions = filteredForOptions.filter(
-          (order) => filterValues.includes(order[key as FilterType])
-        );
-      }
-    });
-    return Array.from(new Set(filteredForOptions.map((order) => order[filterType]))).filter(Boolean).sort();
-  };
-
-  const filteredOrders = React.useMemo(() => {
-    let result = allOrders.map((order, index) => ({ ...order, _internalId: index }));
-
-    // Apply Filters
-    Object.entries(filters).forEach(([key, values]) => {
-      const filterValues = values as string[] | undefined;
-      if (filterValues && filterValues.length > 0) {
-        result = result.filter((order) => filterValues.includes(order[key as FilterType]));
-      }
-    });
-
-    // Apply Search
-    if (searchTerm) {
-      const lowerSearch = searchTerm.toLowerCase();
-      result = result.filter(
-        (order) =>
-          order.material.toLowerCase().includes(lowerSearch) ||
-          order.materialDescription.toLowerCase().includes(lowerSearch) ||
-          order.pedido.toLowerCase().includes(lowerSearch)
+    
+    const activeOtherFilters = Object.entries(otherFilters).filter(([_, v]) => (v as string[]).length > 0);
+    
+    if (activeOtherFilters.length > 0) {
+      filteredForOptions = filteredForOptions.filter(order => 
+        activeOtherFilters.every(([key, values]) => (values as string[]).includes(order[key as FilterType]))
       );
     }
+    
+    return Array.from(new Set(filteredForOptions.map((order) => order[activeFilter]))).filter(Boolean).sort();
+  }, [allOrders, filters, activeFilter]);
 
-    // Sort: Material (by material's total value DESC), then Mes Receb (ASC)
-    const materialTotals: Record<string, number> = {};
-    result.forEach(o => {
-      materialTotals[o.material] = (materialTotals[o.material] || 0) + o.valorNF;
+  const groupedMaterials = React.useMemo(() => {
+    const lowerSearch = deferredSearchTerm.toLowerCase();
+    const activeFilters = Object.entries(filters).filter(([_, v]) => (v as string[]).length > 0);
+
+    // Filter and Group in one pass
+    const groups: Record<string, MaterialGroup> = {};
+    
+    for (const order of allOrders) {
+      // Apply Filters
+      let matchesFilters = true;
+      for (const [key, values] of activeFilters) {
+        if (!(values as string[]).includes(order[key as FilterType])) {
+          matchesFilters = false;
+          break;
+        }
+      }
+      if (!matchesFilters) continue;
+
+      // Apply Search
+      if (lowerSearch) {
+        if (!(order.material.toLowerCase().includes(lowerSearch) ||
+            order.materialDescription.toLowerCase().includes(lowerSearch) ||
+            order.pedido.toLowerCase().includes(lowerSearch))) {
+          continue;
+        }
+      }
+
+      // Grouping
+      if (!groups[order.material]) {
+        groups[order.material] = {
+          material: order.material,
+          materialDescription: order.materialDescription,
+          totalQty: 0,
+          totalValue: 0,
+          avgVenda: 0,
+          avgEstoque: 0,
+          avgMediaVenda: 0,
+          avgEstoqueGestor: 0,
+          orders: []
+        };
+      }
+      const g = groups[order.material];
+      g.totalQty += order.qtdeConfirmada;
+      g.totalValue += order.valorNF;
+      g.avgVenda += order.venda;
+      g.avgEstoque += order.estoque;
+      g.avgMediaVenda += order.mediaVenda;
+      g.avgEstoqueGestor += order.estoqueGestor;
+      g.orders.push(order);
+    }
+
+    // Calculate averages and sort internal orders
+    const finalGroups = Object.values(groups).map(group => {
+      const count = group.orders.length;
+      group.avgVenda /= count;
+      group.avgEstoque /= count;
+      group.avgMediaVenda /= count;
+      group.avgEstoqueGestor /= count;
+
+      // Calculate store totals for this material
+      const storeTotals: Record<string, number> = {};
+      group.orders.forEach(o => {
+        storeTotals[o.loja] = (storeTotals[o.loja] || 0) + o.valorNF;
+      });
+
+      // Sort internal orders: Store total value (DESC), Store Name (ASC), Mes Receb (ASC)
+      group.orders.sort((a, b) => {
+        const totalA = storeTotals[a.loja];
+        const totalB = storeTotals[b.loja];
+        if (totalB !== totalA) return totalB - totalA;
+        if (a.loja !== b.loja) return a.loja.localeCompare(b.loja);
+        return (a.mesRecebTimestamp || 0) - (b.mesRecebTimestamp || 0);
+      });
+
+      return group;
     });
 
-    result.sort((a, b) => {
-      const totalA = materialTotals[a.material];
-      const totalB = materialTotals[b.material];
-      if (totalA !== totalB) return totalB - totalA;
-      if (a.material !== b.material) return a.material.localeCompare(b.material);
-      const dateA = parseMonthYear(a.mesRecebMaterial).getTime();
-      const dateB = parseMonthYear(b.mesRecebMaterial).getTime();
-      return dateA - dateB;
-    });
+    // Sort groups by total value DESC
+    finalGroups.sort((a, b) => b.totalValue - a.totalValue);
 
-    return result;
-  }, [filters, searchTerm, allOrders]);
+    return finalGroups;
+  }, [filters, deferredSearchTerm, allOrders]);
+
+  const allFilteredIds = React.useMemo(() => {
+    return groupedMaterials.flatMap(g => g.orders.map(o => o.id!));
+  }, [groupedMaterials]);
 
   // Reset visible count when filters or search change
   React.useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [filters, searchTerm]);
+  }, [filters, deferredSearchTerm]);
 
-  const toggleSelection = (id: number) => {
+  const toggleMaterialExpansion = React.useCallback((material: string) => {
+    setExpandedMaterials(prev => {
+      const next = new Set(prev);
+      if (next.has(material)) next.delete(material);
+      else next.add(material);
+      return next;
+    });
+  }, []);
+
+  const toggleSelection = React.useCallback((id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  const toggleSelectAllPage = () => {
-    if (selectedIds.size === filteredOrders.length) {
+  const toggleMaterialSelection = React.useCallback((group: MaterialGroup, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const groupIds = group.orders.map(o => o.id!);
+    const allSelected = groupIds.every(id => selectedIds.has(id));
+    
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        groupIds.forEach(id => next.delete(id));
+      } else {
+        groupIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  }, [selectedIds]);
+
+  const toggleSelectAllPage = React.useCallback(() => {
+    if (selectedIds.size === allFilteredIds.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredOrders.map(o => o._internalId)));
+      setSelectedIds(new Set(allFilteredIds));
     }
-  };
+  }, [selectedIds.size, allFilteredIds]);
 
   const clearSelection = () => {
     setSelectedIds(new Set());
@@ -122,23 +365,23 @@ const ReleasePage: React.FC = () => {
   };
 
   const selectedOrders = React.useMemo(() => {
-    return allOrders.filter((_, idx) => selectedIds.has(idx));
+    if (selectedIds.size === 0) return [];
+    return allOrders.filter((o) => selectedIds.has(o.id!));
   }, [allOrders, selectedIds]);
 
   const totals = React.useMemo(() => {
-    return selectedOrders.reduce(
-      (acc, order) => {
-        acc.qty += order.qtdeConfirmada;
-        acc.value += order.valorNF;
-        return acc;
-      },
-      { qty: 0, value: 0 }
-    );
+    let qty = 0;
+    let value = 0;
+    for (const order of selectedOrders) {
+      qty += order.qtdeConfirmada;
+      value += order.valorNF;
+    }
+    return { qty, value };
   }, [selectedOrders]);
 
   const groupedSummary = React.useMemo(() => {
     const summary: Record<string, { label: string; description: string; qty: number; value: number }> = {};
-    selectedOrders.forEach((order) => {
+    for (const order of selectedOrders) {
       const key = order[summaryGroupBy];
       if (!summary[key]) {
         summary[key] = { 
@@ -148,21 +391,16 @@ const ReleasePage: React.FC = () => {
           value: 0 
         };
       }
-      summary[key].qty += order.qtdeConfirmada;
-      summary[key].value += order.valorNF;
-    });
-    return Object.entries(summary)
-      .map(([key, data]) => ({
-        key,
-        ...data,
-      }))
-      .sort((a, b) => b.value - a.value);
+      const s = summary[key];
+      s.qty += order.qtdeConfirmada;
+      s.value += order.valorNF;
+    }
+    return Object.values(summary).sort((a, b) => b.value - a.value);
   }, [selectedOrders, summaryGroupBy]);
 
   const handleExport = async () => {
     if (selectedIds.size === 0) return;
 
-    const selectedOrders = allOrders.filter((_, idx) => selectedIds.has(idx));
     const rowsToExport = selectedOrders.map(o => o.originalRow || o);
     
     const csv = Papa.unparse(rowsToExport);
@@ -223,7 +461,7 @@ const ReleasePage: React.FC = () => {
     );
   }
 
-  const visibleOrders = filteredOrders.slice(0, visibleCount);
+  const visibleGroups = groupedMaterials.slice(0, visibleCount);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 pb-32">
@@ -250,7 +488,7 @@ const ReleasePage: React.FC = () => {
             onClick={toggleSelectAllPage}
             className="text-[10px] font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-2 py-1 rounded-md"
           >
-            {selectedIds.size === filteredOrders.length ? "Desmarcar" : "Marcar Todos"}
+            {selectedIds.size === allFilteredIds.length ? "Desmarcar" : "Marcar Todos"}
           </button>
         </div>
       </PageHeader>
@@ -337,12 +575,12 @@ const ReleasePage: React.FC = () => {
 
               <div className="flex-1 overflow-y-auto p-1">
                 <button
-                  onClick={() => toggleSelectAllFilter(activeFilter, getFilterOptions(activeFilter) as string[])}
+                  onClick={() => toggleSelectAllFilter(activeFilter, filterOptions as string[])}
                   className="w-full flex items-center space-x-3 px-3 py-2 hover:bg-gray-50 rounded-lg transition-colors group"
                 >
                   <div className={cn(
                     "w-4 h-4 rounded border flex items-center justify-center transition-colors",
-                    (filters[activeFilter] || []).length === getFilterOptions(activeFilter).length
+                    (filters[activeFilter] || []).length === filterOptions.length
                       ? "bg-black border-black"
                       : "border-gray-300 group-hover:border-gray-400"
                   )}>
@@ -351,7 +589,7 @@ const ReleasePage: React.FC = () => {
                   <span className="text-xs font-bold text-gray-700">(Selecionar Tudo)</span>
                 </button>
 
-                {getFilterOptions(activeFilter)
+                {filterOptions
                   .filter(opt => String(opt).toLowerCase().includes(filterSearch.toLowerCase()))
                   .map((opt) => {
                     const isSelected = (filters[activeFilter] || []).includes(opt as string);
@@ -383,79 +621,44 @@ const ReleasePage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* List of Orders */}
-      <div className="px-4 space-y-2 mt-4">
-        {visibleOrders.length > 0 ? (
+      {/* List of Materials */}
+      <div className="px-4 space-y-3 mt-4">
+        {visibleGroups.length > 0 ? (
           <>
-            {visibleOrders.map((order) => {
-              const isSelected = selectedIds.has(order._internalId);
-              return (
-                <div 
-                  key={`${order.pedido}-${order.material}-${order._internalId}`} 
-                  onClick={() => toggleSelection(order._internalId)}
-                  className={cn(
-                    "bg-white p-3 rounded-xl border transition-all flex items-center space-x-3 cursor-pointer",
-                    isSelected ? "border-black bg-black/[0.02]" : "border-gray-100"
-                  )}
-                >
-                  <div className={cn(
-                    "flex-shrink-0 w-6 h-6 rounded-lg border flex items-center justify-center transition-colors",
-                    isSelected ? "bg-black border-black text-white" : "border-gray-200 text-transparent"
-                  )}>
-                    <Check size={14} />
-                  </div>
+            {visibleGroups.map((group) => {
+              const isExpanded = expandedMaterials.has(group.material);
+              const allSelected = group.orders.every(o => selectedIds.has(o.id!));
+              const someSelected = group.orders.some(o => selectedIds.has(o.id!));
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-start">
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{order.material} | {order.pedido}</span>
-                          <span className="text-[9px] font-bold text-blue-500 uppercase tracking-wider bg-blue-50 px-1 rounded">{order.loja}</span>
-                        </div>
-                        <h3 className="text-xs font-bold text-gray-900 leading-tight truncate">{order.materialDescription}</h3>
-                      </div>
-                      <span className="text-[9px] font-bold text-gray-400">{order.mesRecebMaterial}</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 gap-x-4 gap-y-1 mt-1.5 pt-1.5 border-t border-gray-50">
-                      <div className="flex flex-col">
-                        <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Qtde | Valor</p>
-                        <p className="text-[10px] font-black leading-none">
-                          {formatNumber(order.qtdeConfirmada)} <span className="text-gray-300 mx-1">|</span> {formatCurrency(order.valorNF)}
-                        </p>
-                      </div>
-                      <div className="flex flex-col">
-                        <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Venda | Estq</p>
-                        <p className="text-[10px] font-black leading-none">
-                          {formatNumber(order.venda)} <span className="text-gray-300 mx-1">|</span> {formatNumber(order.estoque)}
-                        </p>
-                      </div>
-                      <div className="flex flex-col">
-                        <p className="text-[7px] font-bold text-gray-400 uppercase leading-none mb-0.5">Venda G. | Estq G.</p>
-                        <p className="text-[10px] font-black leading-none text-orange-600">
-                          {formatNumber(order.mediaVenda)} <span className="text-gray-300 mx-1">|</span> {formatNumber(order.estoqueGestor)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              return (
+                <MaterialCard 
+                  key={group.material}
+                  group={group}
+                  isExpanded={isExpanded}
+                  allSelected={allSelected}
+                  someSelected={someSelected}
+                  onToggleExpansion={toggleMaterialExpansion}
+                  onToggleSelection={toggleMaterialSelection}
+                  selectedIds={selectedIds}
+                  onToggleOrderSelection={toggleSelection}
+                />
               );
             })}
 
-            {visibleCount < filteredOrders.length && (
+            {visibleCount < groupedMaterials.length && (
               <button 
                 onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
                 className="w-full py-4 bg-white border border-gray-100 rounded-xl text-xs font-bold text-gray-400 flex items-center justify-center space-x-2 active:bg-gray-50"
               >
                 <Plus size={14} />
-                <span>Carregar mais ({filteredOrders.length - visibleCount} restantes)</span>
+                <span>Carregar mais ({groupedMaterials.length - visibleCount} restantes)</span>
               </button>
             )}
           </>
         ) : (
           <div className="py-20 text-center">
             <Search className="text-gray-300 mx-auto mb-4" size={24} />
-            <p className="text-gray-500 font-medium">Nenhum pedido encontrado</p>
+            <p className="text-gray-500 font-medium">Nenhum material encontrado</p>
           </div>
         )}
       </div>
@@ -522,7 +725,7 @@ const ReleasePage: React.FC = () => {
 
                       <div className="space-y-2">
                         {groupedSummary.map((m) => (
-                          <div key={m.key} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                          <div key={m.label} className="p-3 rounded-xl bg-gray-50 border border-gray-100">
                             <div className="flex justify-between items-start mb-1">
                               <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{m.label}</span>
                               <span className="text-[11px] font-black text-gray-900">{formatCurrency(m.value)}</span>

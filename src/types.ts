@@ -17,6 +17,7 @@ export interface Order {
   estoque: number;
   mediaVenda: number;
   estoqueGestor: number;
+  mesRecebTimestamp?: number;
   syncDate?: string;
   originalRow?: any;
 }

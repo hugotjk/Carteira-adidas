@@ -23,7 +23,31 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getOrdersLocally(),
         getImageMapLocally()
       ]);
-      setAllOrders(data);
+
+      const parseMonthYear = (monthYear: string) => {
+        if (!monthYear) return 0;
+        if (monthYear.includes("-")) {
+          const [y, m] = monthYear.split("-");
+          return new Date(parseInt(y), parseInt(m) - 1).getTime();
+        }
+        const months: Record<string, number> = {
+          'JAN': 0, 'FEV': 1, 'MAR': 2, 'ABR': 3, 'MAI': 4, 'JUN': 5,
+          'JUL': 6, 'AGO': 7, 'SET': 8, 'OUT': 9, 'NOV': 10, 'DEZ': 11
+        };
+        const parts = monthYear.split('/');
+        if (parts.length === 2) {
+          const [m, y] = parts;
+          return new Date(parseInt(y), months[m.toUpperCase()] || 0).getTime();
+        }
+        return 0;
+      };
+
+      const dataWithIds = data.map((order, index) => ({ 
+        ...order, 
+        id: order.id || `order-${index}`,
+        mesRecebTimestamp: parseMonthYear(order.mesRecebMaterial)
+      }));
+      setAllOrders(dataWithIds);
       setImageMap(images);
     } catch (error) {
       console.error("Error loading data context:", error);
