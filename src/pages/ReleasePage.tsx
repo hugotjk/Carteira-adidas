@@ -10,8 +10,7 @@ import PageHeader from "../components/PageHeader";
 
 const PAGE_SIZE = 50;
 
-const ProductImage = ({ material }: { material: string }) => {
-  const { imageMap } = useData();
+const ProductImage = React.memo(({ material, imageMap }: { material: string; imageMap: Record<string, string> }) => {
   const extension = imageMap[material];
   
   if (!extension) {
@@ -34,7 +33,7 @@ const ProductImage = ({ material }: { material: string }) => {
       />
     </div>
   );
-};
+});
 
 interface MaterialGroup {
   material: string;
@@ -112,7 +111,8 @@ const MaterialCard = React.memo(({
   onToggleExpansion, 
   onToggleSelection,
   selectedIds,
-  onToggleOrderSelection
+  onToggleOrderSelection,
+  imageMap
 }: { 
   group: MaterialGroup; 
   isExpanded: boolean; 
@@ -122,15 +122,34 @@ const MaterialCard = React.memo(({
   onToggleSelection: (group: MaterialGroup, e: React.MouseEvent) => void;
   selectedIds: Set<string>;
   onToggleOrderSelection: (id: string, e: React.MouseEvent) => void;
-}) => (
-  <div className="flex flex-col space-y-2">
-    <div 
-      onClick={() => onToggleExpansion(group.material)}
-      className={cn(
-        "bg-white p-3 rounded-xl border transition-all flex items-center space-x-3 cursor-pointer",
-        isExpanded ? "border-black shadow-md" : "border-gray-100"
-      )}
-    >
+  imageMap: Record<string, string>;
+}) => {
+  const sortedOrders = React.useMemo(() => {
+    if (!isExpanded) return [];
+    
+    const storeTotals: Record<string, number> = {};
+    group.orders.forEach(o => {
+      storeTotals[o.loja] = (storeTotals[o.loja] || 0) + o.valorNF;
+    });
+
+    return [...group.orders].sort((a, b) => {
+      const totalA = storeTotals[a.loja];
+      const totalB = storeTotals[b.loja];
+      if (totalB !== totalA) return totalB - totalA;
+      if (a.loja !== b.loja) return a.loja.localeCompare(b.loja);
+      return (a.mesRecebTimestamp || 0) - (b.mesRecebTimestamp || 0);
+    });
+  }, [group.orders, isExpanded]);
+
+  return (
+    <div className="flex flex-col space-y-2">
+      <div 
+        onClick={() => onToggleExpansion(group.material)}
+        className={cn(
+          "bg-white p-3 rounded-xl border transition-all flex items-center space-x-3 cursor-pointer",
+          isExpanded ? "border-black shadow-md" : "border-gray-100"
+        )}
+      >
       <div 
         onClick={(e) => onToggleSelection(group, e)}
         className={cn(
@@ -166,20 +185,21 @@ const MaterialCard = React.memo(({
 
         <div className="flex flex-col items-end justify-between self-stretch">
           <ChevronDown size={14} className={cn("text-gray-400 transition-transform", isExpanded && "rotate-180")} />
-          <ProductImage material={group.material} />
+          <ProductImage material={group.material} imageMap={imageMap} />
         </div>
       </div>
     </div>
 
-    <AnimatePresence>
+    <AnimatePresence initial={false}>
       {isExpanded && (
         <motion.div 
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
           className="overflow-hidden flex flex-col space-y-1.5 pl-4"
         >
-          {group.orders.map((order) => (
+          {sortedOrders.map((order) => (
             <StoreRow 
               key={order.id} 
               order={order} 
@@ -191,11 +211,24 @@ const MaterialCard = React.memo(({
       )}
     </AnimatePresence>
   </div>
-));
+);
+}, (prev, next) => {
+  // Only re-render if:
+  // 1. Expansion state changed
+  // 2. It is expanded and selectedIds changed
+  // 3. Selection summary (all/some) changed
+  // 4. Group or imageMap changed
+  return prev.isExpanded === next.isExpanded &&
+         prev.allSelected === next.allSelected &&
+         prev.someSelected === next.someSelected &&
+         prev.group === next.group &&
+         prev.imageMap === next.imageMap &&
+         (!next.isExpanded || prev.selectedIds === next.selectedIds);
+});
 
 const ReleasePage: React.FC = () => {
   const { filters, updateFilter, clearFilters } = useFilters();
-  const { allOrders, loading } = useData();
+  const { allOrders, loading, imageMap } = useData();
   const [searchTerm, setSearchTerm] = React.useState("");
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [activeFilter, setActiveFilter] = React.useState<FilterType | null>(null);
@@ -204,7 +237,7 @@ const ReleasePage: React.FC = () => {
   const [visibleCount, setVisibleCount] = React.useState(PAGE_SIZE);
   const [isSummaryOpen, setIsSummaryOpen] = React.useState(false);
   const [summaryGroupBy, setSummaryGroupBy] = React.useState<'material' | 'subGrupo' | 'loja'>('material');
-  const [expandedMaterials, setExpandedMaterials] = React.useState<Set<string>>(new Set());
+  const [expandedMaterial, setExpandedMaterial] = React.useState<string | null>(null);
 
   const filterOptions = React.useMemo(() => {
     if (!activeFilter) return [];
@@ -275,29 +308,14 @@ const ReleasePage: React.FC = () => {
       g.orders.push(order);
     }
 
-    // Calculate averages and sort internal orders
+    // Calculate averages and sort internal orders only for expanded or visible groups
     const finalGroups = Object.values(groups).map(group => {
       const count = group.orders.length;
       group.avgVenda /= count;
       group.avgEstoque /= count;
       group.avgMediaVenda /= count;
       group.avgEstoqueGestor /= count;
-
-      // Calculate store totals for this material
-      const storeTotals: Record<string, number> = {};
-      group.orders.forEach(o => {
-        storeTotals[o.loja] = (storeTotals[o.loja] || 0) + o.valorNF;
-      });
-
-      // Sort internal orders: Store total value (DESC), Store Name (ASC), Mes Receb (ASC)
-      group.orders.sort((a, b) => {
-        const totalA = storeTotals[a.loja];
-        const totalB = storeTotals[b.loja];
-        if (totalB !== totalA) return totalB - totalA;
-        if (a.loja !== b.loja) return a.loja.localeCompare(b.loja);
-        return (a.mesRecebTimestamp || 0) - (b.mesRecebTimestamp || 0);
-      });
-
+      
       return group;
     });
 
@@ -308,7 +326,13 @@ const ReleasePage: React.FC = () => {
   }, [filters, deferredSearchTerm, allOrders]);
 
   const allFilteredIds = React.useMemo(() => {
-    return groupedMaterials.flatMap(g => g.orders.map(o => o.id!));
+    const ids: string[] = [];
+    for (const g of groupedMaterials) {
+      for (const o of g.orders) {
+        ids.push(o.id!);
+      }
+    }
+    return ids;
   }, [groupedMaterials]);
 
   // Reset visible count when filters or search change
@@ -317,12 +341,7 @@ const ReleasePage: React.FC = () => {
   }, [filters, deferredSearchTerm]);
 
   const toggleMaterialExpansion = React.useCallback((material: string) => {
-    setExpandedMaterials(prev => {
-      const next = new Set(prev);
-      if (next.has(material)) next.delete(material);
-      else next.add(material);
-      return next;
-    });
+    setExpandedMaterial(prev => prev === material ? null : material);
   }, []);
 
   const toggleSelection = React.useCallback((id: string, e?: React.MouseEvent) => {
@@ -338,9 +357,9 @@ const ReleasePage: React.FC = () => {
   const toggleMaterialSelection = React.useCallback((group: MaterialGroup, e: React.MouseEvent) => {
     e.stopPropagation();
     const groupIds = group.orders.map(o => o.id!);
-    const allSelected = groupIds.every(id => selectedIds.has(id));
     
     setSelectedIds(prev => {
+      const allSelected = groupIds.every(id => prev.has(id));
       const next = new Set(prev);
       if (allSelected) {
         groupIds.forEach(id => next.delete(id));
@@ -349,25 +368,40 @@ const ReleasePage: React.FC = () => {
       }
       return next;
     });
-  }, [selectedIds]);
+  }, []);
 
   const toggleSelectAllPage = React.useCallback(() => {
-    if (selectedIds.size === allFilteredIds.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(allFilteredIds));
-    }
-  }, [selectedIds.size, allFilteredIds]);
+    setSelectedIds(prev => {
+      if (prev.size === allFilteredIds.length) {
+        return new Set();
+      } else {
+        return new Set(allFilteredIds);
+      }
+    });
+  }, [allFilteredIds]);
 
   const clearSelection = () => {
     setSelectedIds(new Set());
     setIsSummaryOpen(false);
   };
 
+  const allOrdersMap = React.useMemo(() => {
+    const map = new Map<string, Order>();
+    for (const o of allOrders) {
+      map.set(o.id!, o);
+    }
+    return map;
+  }, [allOrders]);
+
   const selectedOrders = React.useMemo(() => {
     if (selectedIds.size === 0) return [];
-    return allOrders.filter((o) => selectedIds.has(o.id!));
-  }, [allOrders, selectedIds]);
+    const orders: Order[] = [];
+    selectedIds.forEach(id => {
+      const o = allOrdersMap.get(id);
+      if (o) orders.push(o);
+    });
+    return orders;
+  }, [allOrdersMap, selectedIds]);
 
   const totals = React.useMemo(() => {
     let qty = 0;
@@ -626,7 +660,7 @@ const ReleasePage: React.FC = () => {
         {visibleGroups.length > 0 ? (
           <>
             {visibleGroups.map((group) => {
-              const isExpanded = expandedMaterials.has(group.material);
+              const isExpanded = expandedMaterial === group.material;
               const allSelected = group.orders.every(o => selectedIds.has(o.id!));
               const someSelected = group.orders.some(o => selectedIds.has(o.id!));
 
@@ -641,6 +675,7 @@ const ReleasePage: React.FC = () => {
                   onToggleSelection={toggleMaterialSelection}
                   selectedIds={selectedIds}
                   onToggleOrderSelection={toggleSelection}
+                  imageMap={imageMap}
                 />
               );
             })}
