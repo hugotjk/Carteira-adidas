@@ -14,10 +14,17 @@ export const FilterProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const [filters, setFilters] = useState<Filters>({});
 
   const updateFilter = (type: FilterType, values: string[]) => {
-    setFilters((prev) => ({
-      ...prev,
-      [type]: values.length > 0 ? values : undefined,
-    }));
+    setFilters((prev) => {
+      if (values.length === 0) {
+        const next = { ...prev };
+        delete next[type];
+        return next;
+      }
+      return {
+        ...prev,
+        [type]: values,
+      };
+    });
   };
 
   const clearFilters = () => setFilters({});

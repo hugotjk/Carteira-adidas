@@ -246,7 +246,7 @@ const ReleasePage: React.FC = () => {
     delete otherFilters[activeFilter];
     let filteredForOptions = allOrders;
     
-    const activeOtherFilters = Object.entries(otherFilters).filter(([_, v]) => (v as string[]).length > 0);
+    const activeOtherFilters = Object.entries(otherFilters).filter(([_, v]) => v && (v as string[]).length > 0);
     
     if (activeOtherFilters.length > 0) {
       filteredForOptions = filteredForOptions.filter(order => 
@@ -259,7 +259,7 @@ const ReleasePage: React.FC = () => {
 
   const groupedMaterials = React.useMemo(() => {
     const lowerSearch = deferredSearchTerm.toLowerCase();
-    const activeFilters = Object.entries(filters).filter(([_, v]) => (v as string[]).length > 0);
+    const activeFilters = Object.entries(filters).filter(([_, v]) => v && (v as string[]).length > 0);
 
     // Filter and Group in one pass
     const groups: Record<string, MaterialGroup> = {};
