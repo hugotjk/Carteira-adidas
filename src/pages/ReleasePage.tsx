@@ -435,7 +435,18 @@ const ReleasePage: React.FC = () => {
   const handleExport = async () => {
     if (selectedIds.size === 0) return;
 
-    const rowsToExport = selectedOrders.map(o => o.originalRow || o);
+    const rowsToExport = selectedOrders.map(o => {
+      const row = { ...(o.originalRow || o) };
+      // Process all values to remove thousands separator (dot) from Brazilian formatted numbers
+      Object.keys(row).forEach(key => {
+        const val = row[key];
+        if (typeof val === 'string' && /^-?\d{1,3}(\.\d{3})*,\d{2}$/.test(val)) {
+          // Remove dots (thousands separator) but keep the comma (decimal separator)
+          row[key] = val.replace(/\./g, '');
+        }
+      });
+      return row;
+    });
     
     // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
