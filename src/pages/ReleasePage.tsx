@@ -5,7 +5,7 @@ import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
-import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import PageHeader from "../components/PageHeader";
 
 const PAGE_SIZE = 50;
@@ -437,13 +437,21 @@ const ReleasePage: React.FC = () => {
 
     const rowsToExport = selectedOrders.map(o => o.originalRow || o);
     
-    const csv = Papa.unparse(rowsToExport);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const filename = `lib_canc_${new Date().toISOString().split('T')[0]}.csv`;
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rowsToExport);
+    XLSX.utils.book_append_sheet(wb, ws, "Liberação");
+    
+    // Generate buffer
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const filename = `lib_canc_${new Date().toISOString().split('T')[0]}.xlsx`;
 
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "text/csv" })] })) {
+    const mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    const file = new File([blob], filename, { type: mimeType });
+
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
-        const file = new File([blob], filename, { type: "text/csv" });
         await navigator.share({
           files: [file],
           title: 'Exportação Liberação',
@@ -789,7 +797,7 @@ const ReleasePage: React.FC = () => {
                 className="w-full bg-black text-white py-4 flex items-center justify-center space-x-3 active:scale-[0.98] transition-transform"
               >
                 <Share2 size={18} />
-                <span className="text-xs font-black uppercase tracking-wider">Exportar CSV</span>
+                <span className="text-xs font-black uppercase tracking-wider">Exportar XLSX</span>
               </button>
             </div>
           </motion.div>
