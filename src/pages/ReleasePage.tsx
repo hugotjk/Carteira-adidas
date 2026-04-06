@@ -437,12 +437,27 @@ const ReleasePage: React.FC = () => {
 
     const rowsToExport = selectedOrders.map(o => {
       const row = { ...(o.originalRow || o) };
-      // Process all values to remove thousands separator (dot) from Brazilian formatted numbers
+      // Process all values to convert numeric strings to actual numbers
       Object.keys(row).forEach(key => {
         const val = row[key];
-        if (typeof val === 'string' && /^-?\d{1,3}(\.\d{3})*,\d{2}$/.test(val)) {
-          // Remove dots (thousands separator) but keep the comma (decimal separator)
-          row[key] = val.replace(/\./g, '');
+        if (typeof val === 'string') {
+          const trimmed = val.trim();
+          if (trimmed === '') return;
+
+          // 1. Brazilian format: "1.234,56" or "123,45"
+          if (/^-?[\d.]+,[\d]+$/.test(trimmed)) {
+            const num = parseFloat(trimmed.replace(/\./g, '').replace(',', '.'));
+            if (!isNaN(num)) row[key] = num;
+          }
+          // 2. Standard numeric or integer: "1234" or "1234.56"
+          else if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+            // Avoid converting codes with leading zeros (e.g. "00123")
+            const isCode = trimmed.length > 1 && trimmed.startsWith('0') && !trimmed.startsWith('0.');
+            if (!isCode) {
+              const num = parseFloat(trimmed);
+              if (!isNaN(num)) row[key] = num;
+            }
+          }
         }
       });
       return row;
@@ -451,6 +466,23 @@ const ReleasePage: React.FC = () => {
     // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rowsToExport);
+    
+    // Apply number formatting to all numeric cells to ensure they are summable
+    // and don't show thousands separators (as requested)
+    for (const z in ws) {
+      if (z[0] === '!') continue; // Skip non-cell properties
+      if (ws[z] && ws[z].t === 'n') {
+        const val = ws[z].v;
+        if (typeof val === 'number') {
+          if (Number.isInteger(val)) {
+            ws[z].z = '0'; // Integer format
+          } else {
+            ws[z].z = '0.00'; // Decimal format (Excel will use local separator like comma)
+          }
+        }
+      }
+    }
+    
     XLSX.utils.book_append_sheet(wb, ws, "Liberação");
     
     // Generate buffer
