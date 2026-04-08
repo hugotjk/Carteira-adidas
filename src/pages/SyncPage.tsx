@@ -1,14 +1,15 @@
 import React from "react";
-import { RefreshCw, CheckCircle, AlertCircle, Database, Clock, Cloud, Loader2, FileText, Download } from "lucide-react";
+import { RefreshCw, CheckCircle, AlertCircle, Database, Clock, Cloud, Loader2, FileText, Download, ImageOff } from "lucide-react";
 import { fetchSheetData, saveOrdersLocally } from "../services/dataService";
 import { cn } from "../lib/utils";
 import { motion } from "framer-motion";
 import { useData } from "../context/DataContext";
 import PageHeader from "../components/PageHeader";
 import { jsPDF } from "jspdf";
+import * as XLSX from "xlsx";
 
 const SyncPage: React.FC = () => {
-  const { refreshData } = useData();
+  const { refreshData, allOrders, imageMap } = useData();
   const [isSyncing, setIsSyncing] = React.useState(false);
   const [lastSync, setLastSync] = React.useState<string | null>(
     localStorage.getItem("lastSyncDate")
@@ -155,6 +156,30 @@ const SyncPage: React.FC = () => {
     doc.save("manual_detalhado_adidas_app.pdf");
   };
 
+  const exportMaterialsWithoutPhotos = () => {
+    const uniqueMaterials = new Map<string, string>();
+    allOrders.forEach(order => {
+      if (!imageMap[order.material]) {
+        uniqueMaterials.set(order.material, order.materialDescription);
+      }
+    });
+
+    const data = Array.from(uniqueMaterials.entries()).map(([material, materialDescription]) => ({
+      "Material": material,
+      "Material Description": materialDescription
+    }));
+
+    if (data.length === 0) {
+      alert("Todos os materiais possuem fotos!");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sem Fotos");
+    XLSX.writeFile(wb, `materiais_sem_fotos_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
       {/* Header */}
@@ -257,6 +282,29 @@ const SyncPage: React.FC = () => {
             >
               <Download size={12} />
               <span>Gerar PDF</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Materials Without Photos Export Card */}
+        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm min-h-[90px] flex flex-col justify-center">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-10 h-10 bg-red-50 text-red-600 rounded-full flex items-center justify-center shrink-0">
+                <ImageOff size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold">Itens Sem Foto</h3>
+                <p className="text-[10px] text-gray-400">Baixe a lista de materiais sem imagem</p>
+              </div>
+            </div>
+            
+            <button
+              onClick={exportMaterialsWithoutPhotos}
+              className="px-4 py-2 bg-red-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-red-600/10 flex items-center space-x-2"
+            >
+              <Download size={12} />
+              <span>Baixar XLSX</span>
             </button>
           </div>
         </div>
