@@ -2,7 +2,7 @@ import Papa from "papaparse";
 import { get, set } from "idb-keyval";
 import { Order } from "../types";
 
-const SHEET_URL = "https://docs.google.com/spreadsheets/d/1h302iCGdzxpayOumFfqU0MD-KlukMVWVadpZYy1-RF4/export?format=csv";
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/1qDYxt3_5qRY0iZPme8qyqZQ4mu95B0d6/export?format=csv&gid=2095400936";
 const GITHUB_API_URL = "https://api.github.com/repos/hugotjk/adidas-fla/contents/";
 
 export async function fetchGitHubImages(): Promise<Record<string, string>> {
