@@ -5,7 +5,6 @@ import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
-import PageHeader from "../components/PageHeader";
 
 const ProductImage = ({ material }: { material: string }) => {
   const { imageMap } = useData();
@@ -19,7 +18,17 @@ const ProductImage = ({ material }: { material: string }) => {
     );
   }
 
-  const imageUrl = `https://raw.githubusercontent.com/hugotjk/adidas-fla/main/${material}.${extension}`;
+  let ext = extension;
+  let repo = "adidas-fla";
+  if (extension.includes(":")) {
+    const parts = extension.split(":");
+    ext = parts[0];
+    repo = parts[1];
+  }
+
+  const imageUrl = repo === "adidas"
+    ? `https://raw.githubusercontent.com/hugotjk/adidas/main/${material}.${ext}`
+    : `https://raw.githubusercontent.com/hugotjk/adidas-fla/main/${material}.${ext}`;
 
   return (
     <div className="w-16 h-16 bg-white rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center flex-shrink-0">
@@ -163,21 +172,9 @@ const AnalysisPage: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      {/* Sticky Header */}
-      <PageHeader title="Análise">
-        {Object.keys(filters).length > 0 && (
-          <button 
-            onClick={clearFilters}
-            className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
-          >
-            Limpar Filtros
-          </button>
-        )}
-      </PageHeader>
-      
       <div className="bg-white border-b border-gray-100 shadow-sm">
-        <div className="px-4 py-3">
-          <div className="relative">
+        <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
@@ -186,6 +183,20 @@ const AnalysisPage: React.FC = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-gray-100 border-none rounded-xl pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-black/5 outline-none"
             />
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 shrink-0">
+            <button 
+              onClick={clearFilters}
+              disabled={Object.keys(filters).length === 0}
+              className={cn(
+                "text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-xl transition-all active:scale-95 duration-200 whitespace-nowrap",
+                Object.keys(filters).length > 0 
+                  ? "bg-[#FFEBEB] text-[#FF4D4D] hover:bg-[#FFD6D6] cursor-pointer" 
+                  : "bg-gray-100/50 text-gray-300 cursor-not-allowed"
+              )}
+            >
+              Limpar Filtros
+            </button>
           </div>
         </div>
 

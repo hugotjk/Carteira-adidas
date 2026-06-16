@@ -9,7 +9,6 @@ import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
-import PageHeader from "../components/PageHeader";
 import { ChevronDown, X, Search, Check } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -139,43 +138,47 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden">
-      {/* Sticky Header */}
-      <PageHeader title="Dashboard">
-        {Object.keys(filters).length > 0 && (
-          <button 
-            onClick={clearFilters}
-            className="text-[10px] font-bold text-red-500 uppercase tracking-wider bg-red-50 px-2 py-1 rounded-md"
-          >
-            Limpar Filtros
-          </button>
-        )}
-      </PageHeader>
-
       <div className="bg-white border-b border-gray-100 shadow-sm">
-        {/* Excel-like Filter Bar */}
-        <div className="flex overflow-x-auto no-scrollbar px-4 py-3 space-x-2">
-          {Object.entries(FILTER_LABELS).map(([key, label]) => {
-            const type = key as FilterType;
-            const isSelected = (filters[type] || []).length > 0;
-            return (
-              <button
-                key={key}
-                onClick={() => {
-                  setActiveFilter(activeFilter === type ? null : type);
-                  setFilterSearch("");
-                }}
-                className={cn(
-                  "flex-shrink-0 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all whitespace-nowrap",
-                  isSelected 
-                    ? "bg-black text-white border-black" 
-                    : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
-                )}
-              >
-                <span>{label}</span>
-                <ChevronDown size={12} className={cn("transition-transform", activeFilter === type && "rotate-180")} />
-              </button>
-            );
-          })}
+        <div className="px-4 py-3 flex items-center justify-between gap-3">
+          {/* Excel-like Filter Bar */}
+          <div className="flex overflow-x-auto no-scrollbar space-x-2 flex-1">
+            {Object.entries(FILTER_LABELS).map(([key, label]) => {
+              const type = key as FilterType;
+              const isSelected = (filters[type] || []).length > 0;
+              return (
+                <button
+                  key={key}
+                  onClick={() => {
+                    setActiveFilter(activeFilter === type ? null : type);
+                    setFilterSearch("");
+                  }}
+                  className={cn(
+                    "flex-shrink-0 flex items-center space-x-1.5 px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all whitespace-nowrap",
+                    isSelected 
+                      ? "bg-black text-white border-black" 
+                      : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"
+                  )}
+                >
+                  <span>{label}</span>
+                  <ChevronDown size={12} className={cn("transition-transform", activeFilter === type && "rotate-180")} />
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button 
+              onClick={clearFilters}
+              disabled={Object.keys(filters).length === 0}
+              className={cn(
+                "text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-xl transition-all active:scale-95 duration-200 whitespace-nowrap",
+                Object.keys(filters).length > 0 
+                  ? "bg-[#FFEBEB] text-[#FF4D4D] hover:bg-[#FFD6D6] cursor-pointer" 
+                  : "bg-gray-100/50 text-gray-300 cursor-not-allowed"
+              )}
+            >
+              Limpar Filtros
+            </button>
+          </div>
         </div>
       </div>
 
@@ -413,7 +416,6 @@ const DashboardPage: React.FC = () => {
                     strokeWidth={2} 
                     fillOpacity={1} 
                     fill={`url(#color-${i})`} 
-                    stackId="1"
                   />
                 ))}
               </AreaChart>

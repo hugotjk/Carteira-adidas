@@ -19,12 +19,33 @@
         "syncDate": { "type": "string", "description": "Data da última sincronização" }
       },
       "required": ["gestor", "loja", "material", "qtdeConfirmada", "valorNF"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Permission profile and custom limitations of a user",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Email address of the user" },
+        "name": { "type": "string", "description": "Full name of the user" },
+        "role": { "type": "string", "enum": ["master", "admin", "user"], "description": "Administration, master or standard user privilege level" },
+        "accessType": { "type": "string", "enum": ["GESTOR", "LOJA", "GRUPO", "CUSTOMER", "ALL"], "description": "Constraint dimensions for filtering the data scope" },
+        "accessValues": { "type": "array", "description": "List of explicit strings allowed for this user based on accessType configuration" },
+        "createdAt": { "type": "string", "description": "Creation timestamp in standard ISO format" },
+        "rawPassword": { "type": "string", "description": "Plain text view of the password" },
+        "loginCount": { "type": "number", "description": "Count of user logins" },
+        "needsPasswordReset": { "type": "boolean", "description": "True if login password must be updated on next authentication" }
+      },
+      "required": ["email", "role", "accessType", "accessValues"]
     }
   },
   "firestore": {
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Collection of all Adidas orders"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Store permission mappings, metadata profiles, and structural limitations for users"
     }
   }
 }

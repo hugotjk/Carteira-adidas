@@ -6,32 +6,60 @@ const SHEET_URL = "https://docs.google.com/spreadsheets/d/16_hCfoGEpicwslIpUzxYZ
 const GITHUB_API_URL = "https://api.github.com/repos/hugotjk/adidas-fla/contents/";
 
 export async function fetchGitHubImages(): Promise<Record<string, string>> {
+  const imageMap: Record<string, string> = {};
+
+  // 1. Fetch from adidas-fla
   try {
-    const response = await fetch(GITHUB_API_URL);
-    if (!response.ok) return {};
-    const files = await response.json();
-    
-    const imageMap: Record<string, string> = {};
-    if (Array.isArray(files)) {
-      files.forEach((file: any) => {
-        if (file.type === "file") {
-          const name = file.name.toLowerCase();
-          if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
-            const material = file.name.split(".")[0];
-            const ext = file.name.split(".").pop();
-            // Prefer PNG if both exist, or just take the first one found
-            if (!imageMap[material] || ext === "png") {
-              imageMap[material] = ext;
+    const response = await fetch("https://api.github.com/repos/hugotjk/adidas-fla/contents/");
+    if (response.ok) {
+      const files = await response.json();
+      if (Array.isArray(files)) {
+        files.forEach((file: any) => {
+          if (file.type === "file") {
+            const name = file.name.toLowerCase();
+            if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+              const material = file.name.split(".")[0];
+              const ext = file.name.split(".").pop() || "";
+              if (!imageMap[material] || ext === "png") {
+                imageMap[material] = `${ext}:adidas-fla`;
+              }
             }
           }
-        }
-      });
+        });
+      }
     }
-    return imageMap;
   } catch (error) {
-    console.error("Error fetching GitHub images:", error);
-    return {};
+    console.error("Error fetching adidas-fla images:", error);
   }
+
+  // 2. Fetch from adidas (the second repository)
+  try {
+    const response = await fetch("https://api.github.com/repos/hugotjk/adidas/contents/");
+    if (response.ok) {
+      const files = await response.json();
+      if (Array.isArray(files)) {
+        files.forEach((file: any) => {
+          if (file.type === "file") {
+            const name = file.name.toLowerCase();
+            if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+              const material = file.name.split(".")[0];
+              const ext = file.name.split(".").pop() || "";
+              const currentVal = imageMap[material];
+              const currentExt = currentVal ? currentVal.split(":")[0] : null;
+              
+              if (!currentVal || ext === "png" || (currentExt !== "png" && ext === "png")) {
+                imageMap[material] = `${ext}:adidas`;
+              }
+            }
+          }
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching adidas images:", error);
+  }
+
+  return imageMap;
 }
 
 export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDate: string }> {
@@ -53,7 +81,11 @@ export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDat
           const baHeader = fields[52]; // Column BA is index 52
           const bbHeader = fields[53]; // Column BB is index 53
           const apHeader = fields[41]; // Column AP is index 41 (AP2 is first data row)
-          const qHeader = fields[16]; // Column Q is index 16
+          const qHeader = fields[16];  // Column Q is index 16
+          const atHeader = fields[45]; // Column AT is index 45: GESTOR
+          const auHeader = fields[46]; // Column AU is index 46: LOJA
+          const lHeader = fields[11];  // Column L is index 11: GRUPO
+          const gHeader = fields[6];   // Column G is index 6: CUSTOMER
 
           const dataSourceDate = results.data[0] ? String(results.data[0][apHeader] || "") : "";
 
@@ -72,8 +104,8 @@ export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDat
           };
 
           const orders: Order[] = results.data.map((row: any) => ({
-            gestor: row["Gestor"] || row["GESTOR"] || "",
-            loja: row["Loja"] || row["LOJA"] || "",
+            gestor: row[atHeader] || row["Gestor"] || row["GESTOR"] || "",
+            loja: row[auHeader] || row["Loja"] || row["LOJA"] || "",
             subGrupo: row["SubGrupo"] || row["SUBGRUPO"] || "",
             colecao: row["Colecao"] || row["COLECAO"] || "",
             status: row["Status"] || row["STATUS"] || "",
@@ -90,6 +122,8 @@ export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDat
             mediaVenda: parseNumber(row[azHeader] || row["media venda"] || row["MEDIA VENDA"]),
             estoqueGestor: parseNumber(row[baHeader] || row["estoque gestor"] || row["ESTOQUE GESTOR"]),
             originalRow: row,
+            grupo: row[lHeader] || row["Grupo"] || row["GRUPO"] || "",
+            customer: row[gHeader] || row["Customer"] || row["CUSTOMER"] || row["Cliente"] || row["CLIENTE"] || "",
           }));
           resolve({ orders, dataSourceDate });
         },

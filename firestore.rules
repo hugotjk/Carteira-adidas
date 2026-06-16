@@ -33,7 +33,8 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "hugotjk2@gmail.com" && request.auth.token.email_verified == true));
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'master' ||
+         request.auth.token.email == "hugotjk2@gmail.com");
     }
 
     function isValidOrder(data) {
@@ -49,9 +50,18 @@ service cloud.firestore {
     // Rules
     // ===============================================================
 
+    match /connection-test/{docId} {
+      allow read: if true;
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+      allow create: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && request.auth.token.email == "hugotjk2@gmail.com");
+      allow delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() && request.auth.uid == userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rawPassword', 'needsPasswordReset', 'loginCount'])
+      );
     }
 
     match /orders/{orderId} {

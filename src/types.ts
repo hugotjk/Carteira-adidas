@@ -20,6 +20,21 @@ export interface Order {
   mesRecebTimestamp?: number;
   syncDate?: string;
   originalRow?: any;
+  grupo?: string;    // Column L (index 11)
+  customer?: string; // Column G (index 6)
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  name?: string;
+  role: "master" | "admin" | "user";
+  accessType: "GESTOR" | "LOJA" | "GRUPO" | "CUSTOMER" | "ALL";
+  accessValues: string[];
+  createdAt?: string;
+  rawPassword?: string;
+  loginCount?: number;
+  needsPasswordReset?: boolean;
 }
 
 export interface GroupedOrder {
