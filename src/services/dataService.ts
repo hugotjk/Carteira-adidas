@@ -7,66 +7,122 @@ const SHEET_URL = "/api/sheet-data";
 export async function fetchGitHubImages(): Promise<Record<string, string>> {
   const imageMap: Record<string, string> = {};
 
-  // 1. Fetch from adidas-fla proxy
-  try {
-    const response = await fetch("/api/github-images/adidas-fla");
-    if (response.ok) {
-      const files = await response.json();
-      if (Array.isArray(files)) {
-        files.forEach((file: any) => {
-          if (file.type === "file") {
-            const name = file.name.toLowerCase();
-            if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
-              const material = file.name.split(".")[0];
-              const ext = file.name.split(".").pop() || "";
+  const processFiles = (files: any[], repo: string) => {
+    if (Array.isArray(files)) {
+      files.forEach((file: any) => {
+        if (file.type === "file") {
+          const name = file.name.toLowerCase();
+          if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
+            const material = file.name.split(".")[0];
+            const ext = file.name.split(".").pop() || "";
+            if (repo === "adidas-fla") {
               if (!imageMap[material] || ext === "png") {
                 imageMap[material] = `${ext}:adidas-fla`;
               }
-            }
-          }
-        });
-      }
-    }
-  } catch (error) {
-    console.error("Error fetching adidas-fla images:", error);
-  }
-
-  // 2. Fetch from adidas proxy (the second repository)
-  try {
-    const response = await fetch("/api/github-images/adidas");
-    if (response.ok) {
-      const files = await response.json();
-      if (Array.isArray(files)) {
-        files.forEach((file: any) => {
-          if (file.type === "file") {
-            const name = file.name.toLowerCase();
-            if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")) {
-              const material = file.name.split(".")[0];
-              const ext = file.name.split(".").pop() || "";
+            } else {
               const currentVal = imageMap[material];
               const currentExt = currentVal ? currentVal.split(":")[0] : null;
-              
               if (!currentVal || ext === "png" || (currentExt !== "png" && ext === "png")) {
                 imageMap[material] = `${ext}:adidas`;
               }
             }
           }
-        });
-      }
+        }
+      });
+    }
+  };
+
+  // 1. Fetch from adidas-fla proxy
+  let fetchedFla = false;
+  try {
+    const url = typeof window !== "undefined" && window.location ? `${window.location.origin}/api/github-images/adidas-fla` : "/api/github-images/adidas-fla";
+    const response = await fetch(url);
+    if (response.ok) {
+      const files = await response.json();
+      processFiles(files, "adidas-fla");
+      fetchedFla = true;
     }
   } catch (error) {
-    console.error("Error fetching adidas images:", error);
+    console.warn("Error fetching adidas-fla images from proxy:", error);
+  }
+
+  if (!fetchedFla) {
+    try {
+      const response = await fetch("https://api.github.com/repos/hugotjk/adidas-fla/contents/");
+      if (response.ok) {
+        const files = await response.json();
+        processFiles(files, "adidas-fla");
+      }
+    } catch (error) {
+      console.error("Backup error fetching adidas-fla direct:", error);
+    }
+  }
+
+  // 2. Fetch from adidas proxy (the second repository)
+  let fetchedAdidas = false;
+  try {
+    const url = typeof window !== "undefined" && window.location ? `${window.location.origin}/api/github-images/adidas` : "/api/github-images/adidas";
+    const response = await fetch(url);
+    if (response.ok) {
+      const files = await response.json();
+      processFiles(files, "adidas");
+      fetchedAdidas = true;
+    }
+  } catch (error) {
+    console.warn("Error fetching adidas images from proxy:", error);
+  }
+
+  if (!fetchedAdidas) {
+    try {
+      const response = await fetch("https://api.github.com/repos/hugotjk/adidas/contents/");
+      if (response.ok) {
+        const files = await response.json();
+        processFiles(files, "adidas");
+      }
+    } catch (error) {
+      console.error("Backup error fetching adidas direct:", error);
+    }
   }
 
   return imageMap;
 }
 
 export async function fetchSheetData(): Promise<{ orders: Order[]; dataSourceDate: string }> {
+  let csvText = "";
+  let success = false;
+
+  // 1. Try our Absolute Proxy URL
   try {
-    const response = await fetch(SHEET_URL);
-    if (!response.ok) throw new Error("Falha ao buscar dados da planilha");
-    const csvText = await response.text();
-    
+    const url = typeof window !== "undefined" && window.location ? `${window.location.origin}/api/sheet-data` : SHEET_URL;
+    const response = await fetch(url);
+    if (response.ok) {
+      csvText = await response.text();
+      success = true;
+    } else {
+      console.warn("Proxy sheet fetch returned status:", response.status);
+    }
+  } catch (error) {
+    console.warn("Proxy sheet fetch failed:", error);
+  }
+
+  // 2. Fallback to direct client-side spreadsheet URL if Proxy failed
+  if (!success) {
+    try {
+      const DIRECT_SHEET_URL = "https://docs.google.com/spreadsheets/d/16_hCfoGEpicwslIpUzxYZF8GYNVXCYsi/export?format=csv";
+      const response = await fetch(DIRECT_SHEET_URL);
+      if (response.ok) {
+        csvText = await response.text();
+        success = true;
+      } else {
+        throw new Error(`Direct spreadsheet fetch responded with status ${response.status}`);
+      }
+    } catch (fallbackError) {
+      console.error("Direct sheet fetch fallback also failed:", fallbackError);
+      throw new Error("Falha ao buscar dados de todas as fontes disponíveis");
+    }
+  }
+
+  try {
     return new Promise((resolve, reject) => {
       Papa.parse(csvText, {
         header: true,
