@@ -2,15 +2,14 @@ import Papa from "papaparse";
 import { get, set } from "idb-keyval";
 import { Order } from "../types";
 
-const SHEET_URL = "https://docs.google.com/spreadsheets/d/16_hCfoGEpicwslIpUzxYZF8GYNVXCYsi/export?format=csv";
-const GITHUB_API_URL = "https://api.github.com/repos/hugotjk/adidas-fla/contents/";
+const SHEET_URL = "/api/sheet-data";
 
 export async function fetchGitHubImages(): Promise<Record<string, string>> {
   const imageMap: Record<string, string> = {};
 
-  // 1. Fetch from adidas-fla
+  // 1. Fetch from adidas-fla proxy
   try {
-    const response = await fetch("https://api.github.com/repos/hugotjk/adidas-fla/contents/");
+    const response = await fetch("/api/github-images/adidas-fla");
     if (response.ok) {
       const files = await response.json();
       if (Array.isArray(files)) {
@@ -32,9 +31,9 @@ export async function fetchGitHubImages(): Promise<Record<string, string>> {
     console.error("Error fetching adidas-fla images:", error);
   }
 
-  // 2. Fetch from adidas (the second repository)
+  // 2. Fetch from adidas proxy (the second repository)
   try {
-    const response = await fetch("https://api.github.com/repos/hugotjk/adidas/contents/");
+    const response = await fetch("/api/github-images/adidas");
     if (response.ok) {
       const files = await response.json();
       if (Array.isArray(files)) {
