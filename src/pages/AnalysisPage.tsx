@@ -5,46 +5,11 @@ import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
-
-const ProductImage = ({ material }: { material: string }) => {
-  const { imageMap } = useData();
-  const extension = imageMap[material];
-  
-  if (!extension) {
-    return (
-      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 flex-shrink-0">
-        <span className="text-[8px] font-black text-gray-400 uppercase text-center leading-tight">SEM<br/>FOTO</span>
-      </div>
-    );
-  }
-
-  let ext = extension;
-  let repo = "adidas-fla";
-  if (extension.includes(":")) {
-    const parts = extension.split(":");
-    ext = parts[0];
-    repo = parts[1];
-  }
-
-  const imageUrl = repo === "adidas"
-    ? `https://raw.githubusercontent.com/hugotjk/adidas/main/${material}.${ext}`
-    : `https://raw.githubusercontent.com/hugotjk/adidas-fla/main/${material}.${ext}`;
-
-  return (
-    <div className="w-16 h-16 bg-white rounded-lg overflow-hidden border border-gray-100 flex items-center justify-center flex-shrink-0">
-      <img 
-        src={imageUrl} 
-        alt={material}
-        className="w-full h-full object-contain"
-        referrerPolicy="no-referrer"
-      />
-    </div>
-  );
-};
+import ProductImage from "../components/ProductImage";
 
 const AnalysisPage: React.FC = () => {
   const { filters, updateFilter, clearFilters } = useFilters();
-  const { allOrders, loading } = useData();
+  const { allOrders, loading, imageMap } = useData();
   const [searchTerm, setSearchTerm] = React.useState("");
   const [activeFilter, setActiveFilter] = React.useState<FilterType | null>(null);
   const [filterSearch, setFilterSearch] = React.useState("");
@@ -394,7 +359,7 @@ const AnalysisPage: React.FC = () => {
                       expandedMaterial === group.material && "rotate-180 text-black"
                     )} 
                   />
-                  <ProductImage material={group.material} />
+                  <ProductImage material={group.material} imageMap={imageMap} size="md" />
                 </div>
               </div>
 

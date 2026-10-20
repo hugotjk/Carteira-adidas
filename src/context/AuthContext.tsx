@@ -63,7 +63,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
           }
           
-          if (userDoc && userDoc.exists()) {
+          const blockedProfile: UserProfile = {
+            uid: currentUser.uid,
+            email: currentUser.email || "",
+            role: "user",
+            accessType: "GESTOR",
+            accessValues: [],
+            blocked: true
+          };
+
+          if (userDoc && userDoc.exists() && userDoc.data().disabled && currentUser.email !== "hugotjk2@gmail.com") {
+            // Login desativado pelo administrador: não libera nenhum dado
+            setUserProfile(blockedProfile);
+          } else if (userDoc && userDoc.exists()) {
             const data = userDoc.data();
             
             // Check and increment session loginCount
@@ -122,17 +134,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ...bootstrapProfile
               });
             } else {
-              // Denied user with no profile info
-              setUserProfile({
-                uid: currentUser.uid,
-                email: currentUser.email || "",
-                role: "user",
-                accessType: "ALL",
-                accessValues: [], // default limited access
-                rawPassword: "",
-                loginCount: 1,
-                needsPasswordReset: false
-              });
+              // Login sem perfil cadastrado (ex.: perfil apagado): não libera nenhum dado
+              setUserProfile(blockedProfile);
             }
           }
         } catch (error) {
