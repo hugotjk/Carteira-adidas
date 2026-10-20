@@ -1,4 +1,5 @@
 import { Order } from "../types";
+import { fixBrokenAccents } from "../lib/utils";
 
 /**
  * Mapa das colunas da planilha "Carteira" → campos do app.
@@ -122,7 +123,8 @@ export function rowToOrder(row: Record<string, any>, cols: ResolvedColumns): Ord
   const text = (field: TextField) => {
     const header = cols.text[field];
     const v = header !== undefined ? row[header] : undefined;
-    return v === null || v === undefined ? "" : String(v);
+    // Corrige acentos quebrados da planilha (ex.: "BONÃ‰" → "BONÉ")
+    return v === null || v === undefined ? "" : fixBrokenAccents(String(v));
   };
   const num = (field: NumericField) => {
     const header = cols.numbers[field];
