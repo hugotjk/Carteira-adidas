@@ -13,6 +13,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const AnalysisPage = lazy(() => import("./pages/AnalysisPage"));
 const ReleasePage = lazy(() => import("./pages/ReleasePage"));
 const SyncPage = lazy(() => import("./pages/SyncPage"));
+const SugestaoFW27Page = lazy(() => import("./pages/SugestaoFW27Page"));
 
 const PageLoader = () => (
   <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-4">
@@ -53,6 +54,8 @@ function AppContent() {
         return <AnalysisPage />;
       case "release":
         return <ReleasePage />;
+      case "fw27":
+        return <SugestaoFW27Page />;
       case "sync":
         return <SyncPage />;
       default:
