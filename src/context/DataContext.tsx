@@ -11,6 +11,7 @@ import {
   markSynced,
 } from "../services/dataService";
 import { useAuth } from "./AuthContext";
+import { fixBrokenAccents } from "../lib/utils";
 
 export interface SyncResult {
   count: number;
@@ -62,6 +63,10 @@ const parseMonthYear = (monthYear: string) => {
 const prepareOrders = (data: Order[]): Order[] =>
   data.map((order, index) => ({
     ...order,
+    // Dados já guardados no aparelho antes desta correção também saem com acento certo
+    materialDescription: fixBrokenAccents(order.materialDescription),
+    subGrupo: fixBrokenAccents(order.subGrupo),
+    loja: fixBrokenAccents(order.loja),
     id: order.id || `order-${index}`,
     mesRecebTimestamp: parseMonthYear(order.mesRecebMaterial)
   }));
@@ -185,7 +190,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     const type = userProfile.accessType;
-    const values = userProfile.accessValues.map(v => v.trim().toLowerCase());
+    const values = userProfile.accessValues.map(v => fixBrokenAccents(v).trim().toLowerCase());
 
     const filtered = rawOrders.filter(order => {
       if (type === "GESTOR") {
