@@ -98,7 +98,8 @@ for (const repo of IMAGE_REPOS) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // Cloud Run informa a porta pela variável PORT; localmente usa 3000
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Compacta as respostas: a planilha (~50 MB em texto) cai para poucos MB
   app.use(compression());
