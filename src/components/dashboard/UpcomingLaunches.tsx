@@ -23,7 +23,7 @@ const DAY = 24 * 60 * 60 * 1000;
  * ignora cancelados e considera a coluna "Data de Lançamento" a partir de hoje.
  */
 const UpcomingLaunches: React.FC<{ orders: Order[] }> = ({ orders }) => {
-  const [days, setDays] = React.useState<WindowDays>(90);
+  const [days, setDays] = React.useState<WindowDays>(30);
   const [showAll, setShowAll] = React.useState(false);
 
   // Lê as datas uma vez só, mantendo apenas os lançamentos de hoje em diante
