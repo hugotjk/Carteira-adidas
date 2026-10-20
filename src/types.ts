@@ -35,6 +35,10 @@ export interface UserProfile {
   rawPassword?: string;
   loginCount?: number;
   needsPasswordReset?: boolean;
+  /** Login desativado pelo administrador (botão "Desativar" na tela Banco). */
+  disabled?: boolean;
+  /** Calculado no app: true quando o login não tem perfil liberado. Nunca é salvo no banco. */
+  blocked?: boolean;
 }
 
 export interface GroupedOrder {

@@ -3,6 +3,7 @@ import { LayoutDashboard, Table, Database, Menu, X, CheckSquare, XSquare, LogOut
 import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
+import { formatSourceDate } from "../services/dataService";
 
 interface SidebarProps {
   activeTab: string;
@@ -11,12 +12,14 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const { userProfile, logout, dbConnected } = useAuth();
-  const { syncDatabase, isSyncing } = useData();
+  const { syncDatabase, isSyncing, dataSourceDate } = useData();
+  const updatedAt = formatSourceDate(dataSourceDate);
+  const updatedLabel = isSyncing ? "Atualizando dados..." : updatedAt ? `Dados de ${updatedAt}` : "";
 
   const handleLogoClick = async () => {
     if (isSyncing) return;
     try {
-      await syncDatabase();
+      await syncDatabase(true);
     } catch (e) {
       console.error("Error during logo click sync:", e);
     }
@@ -47,6 +50,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
           />
           <h1 className="text-xl font-bold tracking-tight">Carteira adidas</h1>
         </div>
+        {updatedLabel && (
+          <p className="px-8 -mt-5 text-[9px] font-bold text-gray-400 uppercase tracking-wider" title="Data de atualização da planilha">
+            {updatedLabel}
+          </p>
+        )}
 
         <nav className="flex-1 px-4 space-y-2 mt-4">
           {navItems.map((item) => (
@@ -121,7 +129,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
               isSyncing ? "animate-spin opacity-45 pointer-events-none" : "hover:scale-110 active:scale-95"
             )}
           />
-          <h1 className="text-sm font-bold tracking-tight text-gray-950">Carteira adidas</h1>
+          <div className="min-w-0 leading-none">
+            <h1 className="text-sm font-bold tracking-tight text-gray-950">Carteira adidas</h1>
+            {updatedLabel && (
+              <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider truncate mt-0.5">{updatedLabel}</p>
+            )}
+          </div>
         </div>
         {userProfile && (
           <button 
