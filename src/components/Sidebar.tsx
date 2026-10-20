@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutDashboard, Table, Database, Menu, X, CheckSquare, XSquare, LogOut, User } from "lucide-react";
+import { LayoutDashboard, Table, Database, Menu, X, CheckSquare, XSquare, LogOut, User, Sparkles } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 import { useData } from "../context/DataContext";
@@ -29,6 +29,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "analysis", label: "Análise", icon: Table },
     { id: "release", label: "Liberar & Cancelar", icon: CheckSquare },
+    { id: "fw27", label: "Sugestão FW27", icon: Sparkles },
     { id: "sync", label: "Banco", icon: Database },
   ];
 
@@ -164,7 +165,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
               <item.icon size={20} />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-tighter">
-              {item.id === 'release' ? 'LIB. | CANC.' : item.label}
+              {item.id === 'release' ? 'LIB. | CANC.' : item.id === 'fw27' ? 'FW27' : item.label}
             </span>
           </button>
         ))}
