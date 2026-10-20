@@ -33,9 +33,28 @@ interface ProductImageProps {
   size?: keyof typeof SIZES;
 }
 
+/** Endereços tentados, em ordem, quando o material ainda não está na lista de fotos. */
+function guessUrls(material: string): string[] {
+  const base = "https://raw.githubusercontent.com/hugotjk";
+  return [
+    `${base}/adidas-fla/main/${material}.png`,
+    `${base}/adidas-fla/main/${material}.jpg`,
+    `${base}/adidas/main/${material}.png`,
+    `${base}/adidas/main/${material}.jpg`,
+  ];
+}
+
 const ProductImage = React.memo(({ material, imageMap, size = "sm" }: ProductImageProps) => {
-  const imageUrl = getProductImageUrl(material, imageMap);
   const s = SIZES[size];
+  // Se o material ainda não está na lista (ex.: foto subiu agora), tenta achar a foto direto no GitHub
+  const candidates = React.useMemo(() => {
+    const known = getProductImageUrl(material, imageMap);
+    return known ? [known] : guessUrls(material);
+  }, [material, imageMap]);
+  const [attempt, setAttempt] = React.useState(0);
+  React.useEffect(() => setAttempt(0), [candidates]);
+
+  const imageUrl = candidates[attempt];
 
   if (!imageUrl) {
     return (
@@ -52,6 +71,7 @@ const ProductImage = React.memo(({ material, imageMap, size = "sm" }: ProductIma
         alt={material}
         loading="lazy"
         decoding="async"
+        onError={() => setAttempt((n) => n + 1)}
         className="w-full h-full object-contain"
         referrerPolicy="no-referrer"
       />

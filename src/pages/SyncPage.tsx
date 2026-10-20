@@ -19,7 +19,8 @@ import { formatSourceDate } from "../services/dataService";
 import UserManagement from "../components/admin/UserManagement";
 
 const SyncPage: React.FC = () => {
-  const { allOrders, imageMap, isSyncing, syncDatabase, lastSync, dataSourceDate, syncWarnings } = useData();
+  const { allOrders, isSyncing, syncDatabase, lastSync, dataSourceDate, syncWarnings, refreshImages } = useData();
+  const [isCheckingPhotos, setIsCheckingPhotos] = useState(false);
   const { userProfile } = useAuth();
 
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
@@ -50,6 +51,15 @@ const SyncPage: React.FC = () => {
   };
 
   const exportMaterialsWithoutPhotos = async () => {
+    // Confere as fotos no GitHub na hora, para o relatório já considerar as que acabaram de subir
+    setIsCheckingPhotos(true);
+    let imageMap: Record<string, string>;
+    try {
+      imageMap = await refreshImages();
+    } finally {
+      setIsCheckingPhotos(false);
+    }
+
     const uniqueMaterials = new Map<string, string>();
     allOrders.forEach(order => {
       if (!imageMap[order.material]) {
@@ -212,10 +222,11 @@ const SyncPage: React.FC = () => {
                 
                 <button
                   onClick={exportMaterialsWithoutPhotos}
+                  disabled={isCheckingPhotos}
                   className="px-4 py-2 bg-red-600 text-white rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-red-600/10 flex items-center space-x-2"
                 >
                   <Download size={12} />
-                  <span>Baixar XLSX</span>
+                  <span>{isCheckingPhotos ? "Conferindo fotos..." : "Baixar XLSX"}</span>
                 </button>
               </div>
             </div>

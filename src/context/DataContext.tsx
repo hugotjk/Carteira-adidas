@@ -35,6 +35,8 @@ interface DataContextType {
   /** Avisos da última sincronização (ex.: coluna não encontrada). */
   syncWarnings: string[];
   refreshData: () => Promise<void>;
+  /** Busca de novo a lista de fotos no GitHub. Retorna a lista atualizada (ou a atual, se falhar). */
+  refreshImages: () => Promise<Record<string, string>>;
   /** force = true busca no Google na hora, sem usar a cópia guardada no servidor. */
   syncDatabase: (force?: boolean) => Promise<SyncResult>;
 }
@@ -105,6 +107,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const imageMapRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    imageMapRef.current = imageMap;
+  }, [imageMap]);
+
+  const refreshImages = async (): Promise<Record<string, string>> => {
+    try {
+      const images = await fetchGitHubImages();
+      if (Object.keys(images).length > 0) {
+        await saveImageMapLocally(images);
+        setImageMap(images);
+        imageMapRef.current = images;
+        return images;
+      }
+    } catch (e) {
+      console.warn("Image refresh failed:", e);
+    }
+    return imageMapRef.current;
+  };
+
   const runSync = async (force: boolean): Promise<SyncResult> => {
     // Espera os dados guardados no aparelho carregarem antes de decidir o que baixar
     if (localLoadRef.current) await localLoadRef.current;
@@ -112,14 +134,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const etag = hasLocalDataRef.current ? getSyncInfo().etag : null;
 
     // Fotos e planilha em paralelo; se as fotos falharem, a planilha segue normalmente
-    const imagesPromise = fetchGitHubImages()
-      .then(async (images) => {
-        if (Object.keys(images).length > 0) {
-          await saveImageMapLocally(images);
-          setImageMap(images);
-        }
-      })
-      .catch((e) => console.warn("Image sync failed:", e));
+    const imagesPromise = refreshImages();
 
     const sheet = await fetchSheetData({ force, etag });
 
@@ -222,6 +237,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       dataSourceDate,
       syncWarnings,
       refreshData: loadData,
+      refreshImages,
       syncDatabase,
     }}>
       {children}
