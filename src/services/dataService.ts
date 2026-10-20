@@ -2,6 +2,7 @@ import Papa from "papaparse";
 import { get, set } from "idb-keyval";
 import { Order } from "../types";
 import { resolveColumns, rowToOrder } from "./sheetColumns";
+import { parseSheetDate, formatDate, formatDateTime } from "../lib/dates";
 
 const DIRECT_SHEET_URL = "https://docs.google.com/spreadsheets/d/16_hCfoGEpicwslIpUzxYZF8GYNVXCYsi/export?format=csv";
 const IMAGE_REPOS = ["adidas-fla", "adidas"] as const;
@@ -211,15 +212,11 @@ export async function getImageMapLocally(): Promise<Record<string, string>> {
   return saved || {};
 }
 
-/** "2026-10-19 05:06:33" ou "19/10/2026 05:06:33" → "19/10/2026 às 05:06" */
+/** "10/19/26 5:06" (formato do Google) ou "2026-10-19 05:06:33" → "19/10/2026 às 05:06" */
 export function formatSourceDate(value: string | null | undefined): string {
   if (!value) return "";
-  const v = value.trim();
-  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/);
-  if (m) return `${m[3]}/${m[2]}/${m[1]} às ${m[4].padStart(2, "0")}:${m[5]}`;
-  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ ,]+(\d{1,2}):(\d{2})/);
-  if (m) return `${m[1].padStart(2, "0")}/${m[2].padStart(2, "0")}/${m[3]} às ${m[4].padStart(2, "0")}:${m[5]}`;
-  m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-  return v;
+  const d = parseSheetDate(value);
+  if (!d) return value.trim();
+  const hasTime = /\d:\d{2}/.test(value);
+  return hasTime ? formatDateTime(d) : formatDate(d);
 }

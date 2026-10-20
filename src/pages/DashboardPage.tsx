@@ -9,6 +9,7 @@ import { cn, formatCurrency, formatNumber } from "../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useFilters } from "../context/FilterContext";
 import { useData } from "../context/DataContext";
+import UpcomingLaunches from "../components/dashboard/UpcomingLaunches";
 import { ChevronDown, X, Search, Check } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -295,6 +296,9 @@ const DashboardPage: React.FC = () => {
 
       {/* Charts Section */}
       <div className="px-4 space-y-4 pb-20">
+        {/* Próximos lançamentos */}
+        <UpcomingLaunches orders={filteredOrders} />
+
         {/* Status Chart */}
         <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
           <h3 className="text-sm font-bold mb-4 flex items-center">
