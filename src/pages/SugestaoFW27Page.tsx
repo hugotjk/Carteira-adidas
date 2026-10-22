@@ -1,6 +1,11 @@
 import React from "react";
 import { Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Wrench } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useAuth } from "../context/AuthContext";
+
+// Só o master carrega a tela de verdade; os outros logins nem baixam esse código.
+const Fw27Master = React.lazy(() => import("../components/fw27/Fw27Master"));
+const MASTER_EMAIL = "hugotjk2@gmail.com";
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
@@ -12,11 +17,24 @@ const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]["id"];
 
 /**
- * Tela "Sugestão FW27". As 4 opções ainda estão sendo definidas;
- * por enquanto cada uma mostra "Em manutenção".
- * Quando ganharem conteúdo, devem respeitar o filtro do login (useData().allOrders).
+ * Tela "Sugestão FW27".
+ * - Master: tela completa (em preparação, até sair a versão oficial).
+ * - Demais logins: "Em manutenção".
  */
 const SugestaoFW27Page: React.FC = () => {
+  const { user, userProfile } = useAuth();
+  const isMaster = userProfile?.role === "master" || user?.email === MASTER_EMAIL;
+  if (isMaster) {
+    return (
+      <React.Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+        <Fw27Master />
+      </React.Suspense>
+    );
+  }
+  return <EmManutencao />;
+};
+
+const EmManutencao: React.FC = () => {
   const [active, setActive] = React.useState<SectionId>("resumos");
   const current = SECTIONS.find((s) => s.id === active)!;
 
