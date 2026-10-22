@@ -37,6 +37,13 @@ service cloud.firestore {
          request.auth.token.email == "hugotjk2@gmail.com");
     }
 
+    // Master: dono do app (e-mail fixo) ou login com papel "master".
+    function isMaster() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "hugotjk2@gmail.com" ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'master');
+    }
+
     function isValidOrder(data) {
       return data.keys().hasAll(['gestor', 'loja', 'material', 'qtdeConfirmada', 'valorNF']) &&
              data.gestor is string && data.gestor.size() > 0 &&
@@ -62,6 +69,12 @@ service cloud.firestore {
         isAuthenticated() && request.auth.uid == userId &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rawPassword', 'needsPasswordReset', 'loginCount'])
       );
+    }
+
+    // Sugestão FW27: um pedido por login. Por enquanto só o master lê e grava.
+    // Quando liberar para os franqueados: allow read, write: if isMaster() || (isAuthenticated() && request.auth.uid == userId);
+    match /fw27Pedidos/{userId} {
+      allow read, write: if isMaster();
     }
 
     match /orders/{orderId} {
