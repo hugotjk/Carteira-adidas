@@ -1,7 +1,7 @@
 import React from "react";
 import * as XLSX from "xlsx-js-style";
 import {
-  Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Plus, Minus, Trash2, ChevronDown, ChevronUp,
+  Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Plus, Trash2, ChevronDown, ChevronUp,
   Download, Lock, Unlock, RotateCcw, Cloud, CloudOff, Loader2, Search, EyeOff,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -543,27 +543,72 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                     <div className="text-gray-300 mt-1 flex justify-end">{open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</div>
                   </div>
                 </button>
-                {open && (
-                  <div className="bg-gray-50/70 border-t border-gray-100 px-3 pb-3">
-                    {ls.map((x) => {
-                      const lopen = lojaAberta === x.loja.id;
-                      return (
-                        <div key={x.loja.id} className="border-b border-gray-100 last:border-0">
-                          <div className="flex items-center gap-2 py-2">
-                            <button onClick={() => setLojaAberta(lopen ? null : x.loja.id)} className="flex-1 min-w-0 text-left">
-                              <div className="text-[11px] font-extrabold truncate">{x.loja.nome}</div>
-                              <div className="text-[10px] font-semibold text-gray-400">sugerido {n0(x.sugerido)} · {brl(x.valor)} · {(() => { const ne = Object.values(x.entregas).filter((q) => q > 0).length; return ne === 1 ? "1 entrega" : `${ne} entregas`; })()} {lopen ? "▲" : "▼"}</div>
-                            </button>
-                            <button aria-label="Menos" disabled={travado || x.qtd <= 0} onClick={() => setTotal(p, x, x.qtd - 1)} className="h-9 w-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center disabled:opacity-30"><Minus size={14} /></button>
-                            <NumInput ariaLabel={`Peças de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-16 text-center bg-white border border-gray-200" />
-                            <button aria-label="Mais" disabled={travado} onClick={() => setTotal(p, x, x.qtd + 1)} className="h-9 w-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center disabled:opacity-30"><Plus size={14} /></button>
-                          </div>
-                          {lopen && (
+                {open && (() => {
+                  const datas = Array.from(new Set(ls.flatMap((x) => Object.keys(x.entregas)))).sort();
+                  const totData = (d: string) => ls.reduce((a, x) => a + (x.entregas[d] || 0), 0);
+                  const sel = ls.find((x) => x.loja.id === lojaAberta) || null;
+                  return (
+                  <div className="bg-gray-50/70 border-t border-gray-100 px-3 pb-3 pt-2 space-y-3">
+                    <div className="bg-white rounded-2xl border border-gray-100 p-3">
+                      <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Quantidade por entrega e loja · toque na loja para ver a grade</div>
+                      <div className="overflow-x-auto no-scrollbar">
+                        <table className="w-full table-fixed text-[10px] border-separate" style={{ borderSpacing: "2px", minWidth: `${2.6 + (ls.length + 1) * 3.4}rem` }}>
+                          <thead>
+                            <tr>
+                              <th className="text-left font-extrabold text-gray-400 pr-1 w-[2.6rem] align-bottom">Entr.</th>
+                              {ls.map((x) => (
+                                <th key={x.loja.id} className="align-bottom">
+                                  <button onClick={() => setLojaAberta(lojaAberta === x.loja.id ? null : x.loja.id)}
+                                    className={cn("w-full rounded-lg px-1 py-1 text-[9px] font-extrabold leading-tight break-words", lojaAberta === x.loja.id ? "bg-black text-white" : "bg-gray-50 text-gray-700 hover:bg-gray-100")}>
+                                    {x.loja.nome}
+                                  </button>
+                                </th>
+                              ))}
+                              <th className="font-extrabold text-gray-400 align-bottom">Tot.</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {datas.map((d) => {
+                              const td = totData(d);
+                              return (
+                                <tr key={d}>
+                                  <td className={cn("pr-1 font-extrabold whitespace-nowrap", d === p.lancamento ? "text-blue-700" : td ? "" : "text-gray-300")}>{diaMes(d)}</td>
+                                  {ls.map((x) => (
+                                    <td key={x.loja.id}>
+                                      <NumInput ariaLabel={`${x.loja.nome} entrega ${diaMes(d)}`} value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", !x.entregas[d] && "text-gray-300", lojaAberta === x.loja.id && "ring-1 ring-black/20")} />
+                                    </td>
+                                  ))}
+                                  <td className={cn("text-center font-black", !td && "text-gray-300")}>{n0(td)}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr>
+                              <td className="pr-1 font-black text-gray-500">Total</td>
+                              {ls.map((x) => (
+                                <td key={x.loja.id}>
+                                  <NumInput ariaLabel={`Total de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
+                                </td>
+                              ))}
+                              <td className="text-center font-black">{n0(total)}</td>
+                            </tr>
+                            <tr className="text-gray-400">
+                              <td className="pr-1 font-bold">Sug.</td>
+                              {ls.map((x) => <td key={x.loja.id} className="text-center font-bold">{n0(x.sugerido)}</td>)}
+                              <td className="text-center font-bold">{n0(sug)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="text-[9px] text-gray-400 mt-2">
+                        Azul = lançamento; depois dias 01 e 15 até 15/11. Datas em cinza foram puladas para a grade não ficar pequena (mínimo {p.tamanhos.length} peças por entrega). Mudar o total da loja divide de novo pelas entregas.
+                      </div>
+                    </div>
+                    {sel && (
                             <div className="bg-white rounded-2xl border border-gray-100 p-3 mb-2">
                               <div className="flex justify-between items-center mb-2">
-                                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Grade por entrega · {n0(x.qtd)} peças</span>
-                                {x.editado && !travado && (
-                                  <button onClick={() => voltar(p, x.loja.id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar à sugestão</button>
+                                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Grade de {sel.loja.nome} · {n0(sel.qtd)} peças</span>
+                                {sel.editado && !travado && (
+                                  <button onClick={() => voltar(p, sel.loja.id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar à sugestão</button>
                                 )}
                               </div>
                               <div className="overflow-x-auto no-scrollbar">
@@ -576,26 +621,26 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {Object.keys(x.gradeEntregas).sort().map((d) => {
-                                      const vazio = !x.entregas[d];
+                                    {Object.keys(sel.gradeEntregas).sort().map((d) => {
+                                      const vazio = !sel.entregas[d];
                                       return (
                                         <tr key={d}>
                                           <td className={cn("pr-1 font-extrabold whitespace-nowrap", d === p.lancamento ? "text-blue-700" : vazio ? "text-gray-300" : "")}>{diaMes(d)}</td>
                                           {p.tamanhos.map((t) => (
                                             <td key={t}>
-                                              <NumInput ariaLabel={`${diaMes(d)} tamanho ${t}`} value={x.gradeEntregas[d]?.[t] || 0} disabled={travado} onCommit={(v) => setCelula(p, x, d, t, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", vazio && "text-gray-300")} />
+                                              <NumInput ariaLabel={`${diaMes(d)} tamanho ${t}`} value={sel.gradeEntregas[d]?.[t] || 0} disabled={travado} onCommit={(v) => setCelula(p, sel, d, t, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", vazio && "text-gray-300")} />
                                             </td>
                                           ))}
                                           <td>
-                                            <NumInput ariaLabel={`Total da entrega ${diaMes(d)}`} value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100", vazio && "text-gray-300")} />
+                                            <NumInput ariaLabel={`Total da entrega ${diaMes(d)}`} value={sel.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, sel, d, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100", vazio && "text-gray-300")} />
                                           </td>
                                         </tr>
                                       );
                                     })}
                                     <tr className="text-gray-500">
                                       <td className="pr-1 font-black">Total</td>
-                                      {p.tamanhos.map((t) => <td key={t} className="text-center font-black">{n0(x.grade[t] || 0)}</td>)}
-                                      <td className="text-center font-black text-gray-900">{n0(x.qtd)}</td>
+                                      {p.tamanhos.map((t) => <td key={t} className="text-center font-black">{n0(sel.grade[t] || 0)}</td>)}
+                                      <td className="text-center font-black text-gray-900">{n0(sel.qtd)}</td>
                                     </tr>
                                   </tbody>
                                 </table>
@@ -604,15 +649,13 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                 Azul = lançamento; depois dias 01 e 15. Linhas em cinza foram puladas para a grade não ficar pequena (mínimo {p.tamanhos.length} peças por entrega). Mudar o total da entrega redistribui os tamanhos dela.
                               </div>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                    )}
                     {editado && !travado && (
-                      <button onClick={() => voltar(p)} className="mt-2 text-[10px] font-bold text-gray-500 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar este produto à sugestão em todas as lojas</button>
+                      <button onClick={() => voltar(p)} className="text-[10px] font-bold text-gray-500 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar este produto à sugestão em todas as lojas</button>
                     )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}
