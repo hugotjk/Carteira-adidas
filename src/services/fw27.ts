@@ -2,7 +2,7 @@
  * Sugestão FW27 — cálculo.
  *
  * Como a sugestão sai:
- *   verba da loja × % do subgrupo (PACK)  → dinheiro da loja naquele subgrupo
+ *   verba da loja × % do subgrupo (HOME, AWAY, THIRD…)  → dinheiro da loja naquele subgrupo
  *   ÷ produtos do subgrupo                → dinheiro por produto
  *   ÷ preço PDV (RRP)                     → peças sugeridas da loja
  *   peças × peso de cada tamanho          → grade
@@ -12,11 +12,14 @@
  * O que não foi mexido continua sendo a sugestão, então muda se a verba mudar.
  */
 import amd from "../data/fw27Amd.json";
+import subgruposPorArtigo from "../data/fw27Subgrupos.json";
 
 export interface Fw27Produto {
   artigo: string;
   descricao: string;
   pack: string;
+  /** Subgrupo de vocês (HOME, AWAY, THIRD…). Vem de src/data/fw27Subgrupos.json; sem cadastro, usa o PACK. */
+  subgrupo: string;
   tipo: string;
   genero: string;
   idade: string;
@@ -46,12 +49,20 @@ export interface Fw27Pedido {
   enviadoEm?: string;
 }
 
-export const PRODUTOS: Fw27Produto[] = amd as Fw27Produto[];
+const MAPA_SUBGRUPO = subgruposPorArtigo as Record<string, string>;
+export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).map((p) => ({
+  ...p,
+  subgrupo: (MAPA_SUBGRUPO[p.artigo] || p.pack || "OUTROS").toUpperCase(),
+}));
 
-export const PACKS: string[] = (() => {
+/** Ordem de exibição dos subgrupos; os que não estiverem aqui vão no fim. */
+const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
+
+export const SUBGRUPOS: string[] = (() => {
   const out: string[] = [];
-  PRODUTOS.forEach((p) => { if (!out.includes(p.pack)) out.push(p.pack); });
-  return out;
+  PRODUTOS.forEach((p) => { if (!out.includes(p.subgrupo)) out.push(p.subgrupo); });
+  const pos = (s: string) => { const i = ORDEM_SUBGRUPOS.indexOf(s); return i < 0 ? 99 : i; };
+  return out.sort((a, b) => pos(a) - pos(b) || a.localeCompare(b));
 })();
 
 export function pedidoVazio(): Fw27Pedido {
@@ -64,16 +75,17 @@ export const chaveItem = (artigo: string, lojaId: string) => `${artigo}|${lojaId
 export function subgruposPadrao(): Record<string, number> {
   const out: Record<string, number> = {};
   const total = PRODUTOS.length || 1;
-  PACKS.forEach((pk) => { out[pk] = (PRODUTOS.filter((p) => p.pack === pk).length / total) * 100; });
+  SUBGRUPOS.forEach((sg) => { out[sg] = (PRODUTOS.filter((p) => p.subgrupo === sg).length / total) * 100; });
   return out;
 }
 
 /** % de cada subgrupo em uso (o salvo, ou o padrão quando ainda não foi definido). */
 export function pctSubgrupos(pedido: Fw27Pedido): Record<string, number> {
   const salvo = pedido.subgrupos || {};
-  if (!Object.keys(salvo).length) return subgruposPadrao();
+  // Nada salvo, ou salvo com nomes antigos (PACK): usa o padrão.
+  if (!SUBGRUPOS.some((sg) => salvo[sg] !== undefined)) return subgruposPadrao();
   const out: Record<string, number> = {};
-  PACKS.forEach((pk) => { out[pk] = Number(salvo[pk] || 0); });
+  SUBGRUPOS.forEach((sg) => { out[sg] = Number(salvo[sg] || 0); });
   return out;
 }
 
@@ -116,8 +128,8 @@ const somaGrade = (g: Record<string, number>) => Object.values(g).reduce((a, b) 
 
 /** Peças sugeridas (sem edição) de um produto numa loja. */
 export function sugeridoLoja(pedido: Fw27Pedido, p: Fw27Produto, loja: Fw27Loja, pct = pctSubgrupos(pedido)): number {
-  const nPack = PRODUTOS.filter((x) => x.pack === p.pack).length || 1;
-  const dinheiro = (Number(loja.verba || 0) * (pct[p.pack] || 0)) / 100 / nPack;
+  const nPack = PRODUTOS.filter((x) => x.subgrupo === p.subgrupo).length || 1;
+  const dinheiro = (Number(loja.verba || 0) * (pct[p.subgrupo] || 0)) / 100 / nPack;
   return p.preco > 0 ? Math.round(dinheiro / p.preco) : 0;
 }
 
@@ -171,15 +183,15 @@ export function totais(pedido: Fw27Pedido, linhas: Fw27Linha[]): Fw27Totais {
       pctAtual: valor ? (v / valor) * 100 : 0,
     };
   });
-  const somaPct = PACKS.reduce((a, pk) => a + (pct[pk] || 0), 0) || 1;
+  const somaPct = SUBGRUPOS.reduce((a, sg) => a + (pct[sg] || 0), 0) || 1;
   const porPack: Fw27Totais["porPack"] = {};
-  PACKS.forEach((pk) => {
-    const ls = linhas.filter((x) => x.produto.pack === pk);
+  SUBGRUPOS.forEach((sg) => {
+    const ls = linhas.filter((x) => x.produto.subgrupo === sg);
     const v = ls.reduce((a, x) => a + x.valor, 0);
-    porPack[pk] = {
+    porPack[sg] = {
       pecas: ls.reduce((a, x) => a + x.qtd, 0),
       valor: v,
-      pctSugerido: ((pct[pk] || 0) / somaPct) * 100,
+      pctSugerido: ((pct[sg] || 0) / somaPct) * 100,
       pctAtual: valor ? (v / valor) * 100 : 0,
     };
   });
