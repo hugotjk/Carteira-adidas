@@ -24,35 +24,37 @@ export interface ResultadoExportacao {
 
 
 const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const COLS = "ABCDEF";
+const COLS = "ABCDEFGHIJK";
 const txt = (ref: string, s: number, v: string | null | undefined) =>
   v == null || v === "" ? `<c r="${ref}" s="${s}"></c>` : `<c r="${ref}" s="${s}" t="inlineStr"><is><t>${esc(String(v))}</t></is></c>`;
 const num = (ref: string, s: number, v: number | null) => (v == null ? `<c r="${ref}" s="${s}"></c>` : `<c r="${ref}" s="${s}" t="n"><v>${v}</v></c>`);
-// "Size" em inglês: o site exporta "Tamanho", mas na importação só reconhece "Size" (testado em 22/10/2026).
-const CAB6 = ["Sold To", "Article Number", "Requested Delivery Date", "Size", "Observações", "Qty"];
-const ESTILO_CAB = [1, 1, 1, 1, 1, 2]; // mesmo do arquivo do site
+// Modelo de 11 colunas (com nome, EAN, lançamento e PDV), importado com sucesso no site em 22/10/2026.
+// "Size" em inglês: o site exporta "Tamanho", mas na importação só reconhece "Size".
+const CABECALHO = ["Sold To", "Article Number", "Article Name", "EAN", "Data de lançamento", "Requested Delivery Date", "Size", "PDV", "Total Qty", "Observações", "Qty"];
+const ESTILO_CAB = [1, 1, 2, 2, 2, 1, 1, 2, 2, 1, 2]; // mesmo do arquivo do site
 const ESTILO_DATA = [7, 8, 9]; // cor da coluna de data alterna como no site
 
-/** Linha do arquivo: [soldTo, artigo, data, tamanho, qty]. */
-type LinhaCarrinho = [string, string, string, string, number | null];
+/** Linha do arquivo: [soldTo, artigo, nome, ean, lançamento, data, tamanho, pdv, qty]. */
+type LinhaCarrinho = [string, string, string, string | null, string, string, string, string, number | null];
 
-/** Monta o XML de uma aba no mesmo formato do arquivo exportado pelo site (modelo de 6 colunas, Apache POI). */
-function abaXml(cartNome: string, soldTo: string, linhas: LinhaCarrinho[]): string {
-  const vazias = (r: number) => ["A", "B", "C", "D"].map((c) => `<c r="${c}${r}" s="3"></c>`).join("");
-  const out: string[] = [MODELO_CARRINHO.__sheetHead];
-  out.push(`\n<row r="1">\n${vazias(1)}${txt("E1", 1, "Nome do carrinho")}${txt("F1", 3, cartNome)}</row>`);
+/** Monta o XML de uma aba no mesmo formato do arquivo exportado pelo site (Apache POI). */
+function abaXml(cartNome: string, soldTo: string, linhas: LinhaCarrinho[], primeira: boolean): string {
+  const vazias = (r: number) => Array.from({ length: 9 }, (_, i) => `<c r="${COLS[i]}${r}" s="3"></c>`).join("");
+  const out: string[] = [primeira ? MODELO_CARRINHO.__sheetHead : MODELO_CARRINHO.__sheetHead.replace(' tabSelected="true"', "")];
+  out.push(`\n<row r="1">\n${vazias(1)}${txt("J1", 1, "Nome do carrinho")}${txt("K1", 3, cartNome)}</row>`);
   out.push(`\n<row r="2" hidden="1">\n</row>\n<row r="3" hidden="1">\n</row>`);
-  out.push(`\n<row r="4">\n${vazias(4)}${txt("E4", 1, "Número do Destinatário")}${txt("F4", 3, soldTo)}</row>`);
-  out.push(`\n<row r="5">\n${CAB6.map((h, i) => txt(COLS[i] + "5", ESTILO_CAB[i], h)).join("")}</row>`);
+  out.push(`\n<row r="4">\n${vazias(4)}${txt("J4", 1, "Número do Destinatário")}${txt("K4", 3, soldTo)}</row>`);
+  out.push(`\n<row r="5">\n${CABECALHO.map((h, i) => txt(COLS[i] + "5", ESTILO_CAB[i], h)).join("")}</row>`);
   const datas: string[] = [];
-  linhas.forEach(([st, art, d, t, q], i) => {
+  linhas.forEach(([st, art, nome, ean, lanc, d, t, pdv, q], i) => {
     const r = i + 6;
     if (!datas.includes(d)) datas.push(d);
     const sData = ESTILO_DATA[datas.indexOf(d) % ESTILO_DATA.length];
-    out.push(`\n<row r="${r}">\n` + txt(`A${r}`, 3, st) + txt(`B${r}`, 3, art) + txt(`C${r}`, sData, d) + txt(`D${r}`, 3, t) + `<c r="E${r}" s="4"></c>` + num(`F${r}`, 5, q) + `</row>`);
+    out.push(`\n<row r="${r}">\n` + txt(`A${r}`, 3, st) + txt(`B${r}`, 3, art) + txt(`C${r}`, 3, nome) + txt(`D${r}`, 3, ean) + txt(`E${r}`, 3, lanc) +
+      txt(`F${r}`, sData, d) + txt(`G${r}`, 3, t) + txt(`H${r}`, 3, pdv) + `<c r="I${r}" s="3" t="n"><v>0.0</v></c><c r="J${r}" s="4"></c>` + num(`K${r}`, 5, q) + `</row>`);
   });
   out.push("\n" + MODELO_CARRINHO.__sheetTail);
-  return out.join("").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:F${linhas.length + 5}"/>`);
+  return out.join("").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:K${linhas.length + 5}"/>`);
 }
 
 export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opcoes: { nomeCarrinho?: string } = {}): ResultadoExportacao {
@@ -70,7 +72,7 @@ export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opco
       a.tamanhos.forEach((t) => {
         const q = Number(x?.gradeEntregas[d]?.[t] || 0);
         pecas += q;
-        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, d, t, q > 0 ? q : null]);
+        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, a.nome, a.eans[t] ?? null, a.lancamento, d, t, a.preco, q > 0 ? q : null]);
       });
     });
   });
@@ -84,8 +86,8 @@ export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opco
     "xl/sharedStrings.xml": enc(MODELO_CARRINHO["xl/sharedStrings.xml"]),
     "xl/styles.xml": enc(MODELO_CARRINHO["xl/styles.xml"]),
     "xl/workbook.xml": enc(MODELO_CARRINHO["xl/workbook.xml"]),
-    "xl/worksheets/sheet1.xml": enc(abaXml(cartNome, soldTo, porAba.Apparel || [])),
-    "xl/worksheets/sheet2.xml": enc(abaXml(cartNome, soldTo, porAba.Hardware || [])),
+    "xl/worksheets/sheet1.xml": enc(abaXml(cartNome, soldTo, porAba.Apparel || [], true)),
+    "xl/worksheets/sheet2.xml": enc(abaXml(cartNome, soldTo, porAba.Hardware || [], false)),
   });
   const foraDoCarrinho = daLoja
     .filter((x) => x.qtd > 0 && !ARTIGOS_NO_CARRINHO.has(x.produto.artigo))
