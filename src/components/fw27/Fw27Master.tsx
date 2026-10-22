@@ -9,7 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import {
-  PRODUTOS, SUBGRUPOS, ENTREGAS, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
+  PRODUTOS, SUBGRUPOS, LANCAMENTOS, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
@@ -25,6 +25,20 @@ type SectionId = (typeof SECTIONS)[number]["id"];
 const n0 = (v: number) => Math.round(v || 0).toLocaleString("pt-BR");
 const brl = (v: number) => "R$ " + Math.round(v || 0).toLocaleString("pt-BR");
 const pct1 = (v: number) => (Math.round((v || 0) * 10) / 10).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + "%";
+const dataBR = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const NOME_MES: Record<string, string> = { "05": "Maio", "06": "Junho", "07": "Julho", "08": "Agosto", "09": "Setembro", "10": "Outubro", "11": "Novembro" };
+/** Soma as entregas de várias linhas por data. */
+function somaPorData(ls: Fw27Linha[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  ls.forEach((x) => Object.entries(x.entregas).forEach(([d, q]) => { if (q) out[d] = (out[d] || 0) + q; }));
+  return out;
+}
+/** Soma por mês (a partir das datas). */
+function somaPorMes(porData: Record<string, number>): { mes: string; q: number; n: number }[] {
+  const m: Record<string, { q: number; n: number }> = {};
+  Object.entries(porData).forEach(([d, q]) => { const k = d.slice(5, 7); m[k] = m[k] || { q: 0, n: 0 }; m[k].q += q; m[k].n += 1; });
+  return Object.keys(m).sort().map((k) => ({ mes: k, ...m[k] }));
+}
 const novoId = () => "L" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const tagDe = (p: Fw27Produto) =>
   p.carryOver === "CARRY OVER" ? { label: "CARRY OVER", cls: "bg-blue-50 text-blue-700" }
@@ -170,11 +184,14 @@ const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais>
   const novos = PRODUTOS.filter((p) => p.carryOver === "TOTALLY NEW").length;
   const co = PRODUTOS.filter((p) => p.carryOver === "CARRY OVER").length;
   const nc = PRODUTOS.length - novos - co;
-  const porEntrega = ENTREGAS.map((d) => {
+  const porEntrega = LANCAMENTOS.map((d) => {
     const ps = PRODUTOS.filter((p) => p.lancamento === d);
     const ls = linhas.filter((x) => x.produto.lancamento === d);
     return { d, ps, pecas: ls.reduce((a, x) => a + x.qtd, 0) };
   });
+  const datasComPeca = Object.keys(somaPorData(linhas)).sort();
+  const meses = somaPorMes(somaPorData(linhas));
+  const maxMes = Math.max(1, ...meses.map((m) => m.q));
   const maxPack = Math.max(1, ...SUBGRUPOS.map((pk) => tot.porPack[pk]?.pecas || 0));
   return (
     <div className="space-y-4">
@@ -182,10 +199,22 @@ const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais>
         <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over · ${nc} nova cor`} />
         <Kpi label="Peças no pedido" value={n0(tot.pecas)} />
         <Kpi label="Valor a PDV" value={brl(tot.valor)} sub={tot.verba ? `verba ${brl(tot.verba)}` : "sem verba ainda"} />
-        <Kpi label="Entregas" value={ENTREGAS.length} sub={`${diaMes(ENTREGAS[0] || "")} a ${diaMes(ENTREGAS[ENTREGAS.length - 1] || "")}`} />
+        <Kpi label="Datas de entrega" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(datasComPeca[0])} a ${diaMes(datasComPeca[datasComPeca.length - 1])}` : "lançamento, 01 e 15"} />
       </div>
+      {meses.length > 0 && (
+        <Card>
+          <h3 className="text-sm font-extrabold mb-3">Peças por mês de entrega</h3>
+          {meses.map((m) => (
+            <div key={m.mes} className="grid grid-cols-[5.5rem_1fr_4.5rem] gap-2 items-center py-1">
+              <div className="text-[11px] font-extrabold">{NOME_MES[m.mes] || m.mes}</div>
+              <div className="h-2 bg-gray-100 rounded"><div className="h-2 bg-black rounded" style={{ width: `${(m.q / maxMes) * 100}%` }} /></div>
+              <div className="text-[11px] font-extrabold text-right">{n0(m.q)}</div>
+            </div>
+          ))}
+        </Card>
+      )}
       <Card>
-        <h3 className="text-sm font-extrabold mb-3">Calendário de entregas</h3>
+        <h3 className="text-sm font-extrabold mb-3">Calendário de lançamentos</h3>
         <div className="space-y-3">
           {porEntrega.map(({ d, ps, pecas }) => (
             <div key={d} className="flex gap-3">
@@ -346,11 +375,48 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
           <span>{okSoma ? "100% ✓" : `${pct1(somaPct)} · ${somaPct < 100 ? "faltam" : "sobram"} ${pct1(Math.abs(100 - somaPct))}`}</span>
         </div>
       </Card>
+      <CurvaCard pedido={pedido} atualizar={atualizar} travado={travado} />
+
       <p className="text-[10px] text-gray-400 px-2">
         Padrão: proporcional ao número de referências de cada subgrupo. Quando as vendas do PDV chegarem, o padrão passa a ser o peso de cada subgrupo (comprador) nas vendas de jun–nov.
         Padrão atual: {SUBGRUPOS.slice(0, 3).map((pk) => `${pk} ${pct1(subgruposPadrao()[pk])}`).join(", ")}…
       </p>
     </div>
+  );
+};
+
+/** Curva de compra: quanto de cada mês (divide as peças entre as entregas). */
+const CurvaCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; travado: boolean }> = ({ pedido, atualizar, travado }) => {
+  const curva = curvaDe(pedido);
+  const soma = MESES_CURVA.reduce((a, m) => a + (curva[m] || 0), 0);
+  const ok = Math.abs(soma - 100) < 0.05;
+  const setMes = (m: string, v: number) => atualizar((p) => ({ ...p, curva: { ...curvaDe(p), [m]: v } }));
+  return (
+    <Card className="px-4 py-2">
+      <div className="flex items-center justify-between py-2">
+        <h3 className="text-sm font-extrabold">Curva de compra por mês</h3>
+        {!travado && (
+          <button onClick={() => atualizar((p) => ({ ...p, curva: {} }))} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1">
+            <RotateCcw size={11} /> Padrão
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-4 md:grid-cols-7 gap-2 pb-2">
+        {MESES_CURVA.map((m) => (
+          <div key={m} className="text-center">
+            <div className="text-[9px] font-extrabold text-gray-400 uppercase mb-1">{(NOME_MES[m] || m).slice(0, 3)}</div>
+            <NumInput ariaLabel={`Peso de ${NOME_MES[m]}`} decimals={1} value={curva[m] || 0} disabled={travado} onCommit={(v) => setMes(m, v)} className="w-full text-center" />
+          </div>
+        ))}
+      </div>
+      <div className={cn("flex justify-between py-3 border-t border-gray-200 text-xs font-black", ok ? "text-emerald-700" : "text-amber-700")}>
+        <span>Soma</span><span>{ok ? "100% ✓" : `${pct1(soma)} (o app ajusta na proporção)`}</span>
+      </div>
+      <p className="text-[10px] text-gray-400 pb-2">
+        Cada entrega cobre as vendas até a próxima, pesadas por esta curva; o lançamento leva 50% a mais.
+        Padrão: meses iguais. Quando as vendas do PDV chegarem, o padrão passa a ser 2026 (ano de Copa, como 2027), e não 2025, que vendeu mais em jun/jul.
+      </p>
+    </Card>
   );
 };
 
@@ -362,14 +428,45 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
   const [aberto, setAberto] = React.useState<string | null>(null);
   const [lojaAberta, setLojaAberta] = React.useState<string | null>(null);
 
+  // Mudou a grade ou o total: as entregas voltam a ser divididas sozinhas.
   const setGrade = (p: Fw27Produto, lojaId: string, grade: Record<string, number>) =>
-    atualizar((pd) => ({ ...pd, itens: { ...pd.itens, [chaveItem(p.artigo, lojaId)]: grade } }));
-  const setTotal = (p: Fw27Produto, lojaId: string, total: number) => setGrade(p, lojaId, gradeDe(p, total));
+    atualizar((pd) => {
+      const k = chaveItem(p.artigo, lojaId);
+      const entregas = { ...(pd.entregas || {}) };
+      const gradeEntrega = { ...(pd.gradeEntrega || {}) };
+      delete entregas[k];
+      delete gradeEntrega[k];
+      return { ...pd, itens: { ...pd.itens, [k]: grade }, entregas, gradeEntrega };
+    });
+  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total));
+  // Grade por entrega: mexeu numa célula, o resto (totais da loja, do tamanho e da entrega) acompanha.
+  const salvarMatriz = (p: Fw27Produto, x: Fw27Linha, m: Record<string, Record<string, number>>) =>
+    atualizar((pd) => ({ ...pd, gradeEntrega: { ...(pd.gradeEntrega || {}), [chaveItem(p.artigo, x.loja.id)]: m } }));
+  const copiaMatriz = (x: Fw27Linha) => JSON.parse(JSON.stringify(x.gradeEntregas)) as Record<string, Record<string, number>>;
+  const setCelula = (p: Fw27Produto, x: Fw27Linha, d: string, t: string, v: number) => {
+    const m = copiaMatriz(x);
+    m[d] = m[d] || {};
+    m[d][t] = Math.round(v);
+    salvarMatriz(p, x, m);
+  };
+  // Mudou o total de uma entrega: redistribui os tamanhos daquela entrega no formato da grade da loja.
+  const setTotalEntrega = (p: Fw27Produto, x: Fw27Linha, d: string, v: number) => {
+    const m = copiaMatriz(x);
+    const atual = m[d] || {};
+    const base = p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade;
+    m[d] = gradeProporcional(p, base, Math.round(v));
+    salvarMatriz(p, x, m);
+  };
   const voltar = (p: Fw27Produto, lojaId?: string) =>
     atualizar((pd) => {
       const itens = { ...pd.itens };
-      Object.keys(itens).forEach((k) => { if (k.startsWith(p.artigo + "|") && (!lojaId || k === chaveItem(p.artigo, lojaId))) delete itens[k]; });
-      return { ...pd, itens };
+      const entregas = { ...(pd.entregas || {}) };
+      const gradeEntrega = { ...(pd.gradeEntrega || {}) };
+      const bate = (k: string) => k.startsWith(p.artigo + "|") && (!lojaId || k === chaveItem(p.artigo, lojaId));
+      Object.keys(itens).forEach((k) => { if (bate(k)) delete itens[k]; });
+      Object.keys(entregas).forEach((k) => { if (bate(k)) delete entregas[k]; });
+      Object.keys(gradeEntrega).forEach((k) => { if (bate(k)) delete gradeEntrega[k]; });
+      return { ...pd, itens, entregas, gradeEntrega };
     });
 
   const q = busca.trim().toUpperCase();
@@ -418,6 +515,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
             const editado = ls.some((x) => x.editado);
             const open = aberto === p.artigo;
             const tag = tagDe(p);
+            const mesesProd = somaPorMes(somaPorData(ls));
             return (
               <div key={p.artigo} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                 <button onClick={() => { setAberto(open ? null : p.artigo); setLojaAberta(null); }} className="w-full text-left p-3 flex gap-3">
@@ -429,7 +527,14 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                       {editado && <span className="text-[8px] font-black rounded px-1.5 py-0.5 bg-amber-50 text-amber-700">EDITADO</span>}
                     </div>
                     <div className="text-xs font-extrabold leading-tight mt-0.5">{p.descricao}</div>
-                    <div className="text-[10px] font-bold text-blue-700 mt-1">Entrega {diaMes(p.lancamento)} · finaliza {diaMes(p.fim)} · PDV R$ {p.preco.toFixed(2).replace(".", ",")}</div>
+                    <div className="text-[10px] font-bold text-blue-700 mt-1">Lança {diaMes(p.lancamento)} · finaliza {diaMes(p.fim)} · PDV R$ {p.preco.toFixed(2).replace(".", ",")}</div>
+                    {mesesProd.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {mesesProd.map((m) => (
+                          <span key={m.mes} className="text-[9px] font-bold bg-gray-50 rounded-md px-1.5 py-0.5">{(NOME_MES[m.mes] || m.mes).slice(0, 3).toUpperCase()} <b>{n0(m.q)}</b>{m.n > 1 ? ` · ${m.n}x` : ""}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-lg font-black leading-none">{n0(total)}</div>
@@ -447,29 +552,57 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                           <div className="flex items-center gap-2 py-2">
                             <button onClick={() => setLojaAberta(lopen ? null : x.loja.id)} className="flex-1 min-w-0 text-left">
                               <div className="text-[11px] font-extrabold truncate">{x.loja.nome}</div>
-                              <div className="text-[10px] font-semibold text-gray-400">sugerido {n0(x.sugerido)} · {brl(x.valor)} {lopen ? "▲ grade" : "▼ grade"}</div>
+                              <div className="text-[10px] font-semibold text-gray-400">sugerido {n0(x.sugerido)} · {brl(x.valor)} · {(() => { const ne = Object.values(x.entregas).filter((q) => q > 0).length; return ne === 1 ? "1 entrega" : `${ne} entregas`; })()} {lopen ? "▲" : "▼"}</div>
                             </button>
-                            <button aria-label="Menos" disabled={travado || x.qtd <= 0} onClick={() => setTotal(p, x.loja.id, x.qtd - 1)} className="h-9 w-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center disabled:opacity-30"><Minus size={14} /></button>
-                            <NumInput ariaLabel={`Peças de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x.loja.id, v)} className="w-16 text-center bg-white border border-gray-200" />
-                            <button aria-label="Mais" disabled={travado} onClick={() => setTotal(p, x.loja.id, x.qtd + 1)} className="h-9 w-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center disabled:opacity-30"><Plus size={14} /></button>
+                            <button aria-label="Menos" disabled={travado || x.qtd <= 0} onClick={() => setTotal(p, x, x.qtd - 1)} className="h-9 w-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center disabled:opacity-30"><Minus size={14} /></button>
+                            <NumInput ariaLabel={`Peças de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-16 text-center bg-white border border-gray-200" />
+                            <button aria-label="Mais" disabled={travado} onClick={() => setTotal(p, x, x.qtd + 1)} className="h-9 w-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center disabled:opacity-30"><Plus size={14} /></button>
                           </div>
                           {lopen && (
                             <div className="bg-white rounded-2xl border border-gray-100 p-3 mb-2">
                               <div className="flex justify-between items-center mb-2">
-                                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Grade · {n0(x.qtd)} peças</span>
+                                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Grade por entrega · {n0(x.qtd)} peças</span>
                                 {x.editado && !travado && (
                                   <button onClick={() => voltar(p, x.loja.id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar à sugestão</button>
                                 )}
                               </div>
-                              <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(p.tamanhos.length, 7)}, minmax(0, 1fr))` }}>
-                                {p.tamanhos.map((t) => (
-                                  <div key={t} className="text-center">
-                                    <div className="text-[9px] font-extrabold text-gray-400 mb-1">{t}</div>
-                                    <NumInput ariaLabel={`Tamanho ${t}`} value={x.grade[t] || 0} disabled={travado} onCommit={(v) => setGrade(p, x.loja.id, { ...x.grade, [t]: v })} className="w-full text-center px-1" />
-                                  </div>
-                                ))}
+                              <div className="overflow-x-auto no-scrollbar">
+                                <table className="w-full table-fixed text-[10px] border-separate" style={{ borderSpacing: "2px", minWidth: `${2.6 + (p.tamanhos.length + 1) * 2.1}rem` }}>
+                                  <thead>
+                                    <tr className="text-gray-400">
+                                      <th className="text-left font-extrabold pr-1 w-[2.6rem]">Entr.</th>
+                                      {p.tamanhos.map((t) => <th key={t} className="font-extrabold">{t}</th>)}
+                                      <th className="font-extrabold">Tot.</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {Object.keys(x.gradeEntregas).sort().map((d) => {
+                                      const vazio = !x.entregas[d];
+                                      return (
+                                        <tr key={d}>
+                                          <td className={cn("pr-1 font-extrabold whitespace-nowrap", d === p.lancamento ? "text-blue-700" : vazio ? "text-gray-300" : "")}>{diaMes(d)}</td>
+                                          {p.tamanhos.map((t) => (
+                                            <td key={t}>
+                                              <NumInput ariaLabel={`${diaMes(d)} tamanho ${t}`} value={x.gradeEntregas[d]?.[t] || 0} disabled={travado} onCommit={(v) => setCelula(p, x, d, t, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", vazio && "text-gray-300")} />
+                                            </td>
+                                          ))}
+                                          <td>
+                                            <NumInput ariaLabel={`Total da entrega ${diaMes(d)}`} value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100", vazio && "text-gray-300")} />
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                    <tr className="text-gray-500">
+                                      <td className="pr-1 font-black">Total</td>
+                                      {p.tamanhos.map((t) => <td key={t} className="text-center font-black">{n0(x.grade[t] || 0)}</td>)}
+                                      <td className="text-center font-black text-gray-900">{n0(x.qtd)}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
                               </div>
-                              <div className="text-[9px] text-gray-400 mt-2">Grade padrão: mais peças no meio. Vai usar a grade vendida no PDV quando os dados chegarem.</div>
+                              <div className="text-[9px] text-gray-400 mt-2">
+                                Azul = lançamento; depois dias 01 e 15. Linhas em cinza foram puladas para a grade não ficar pequena (mínimo {p.tamanhos.length} peças por entrega). Mudar o total da entrega redistribui os tamanhos dela.
+                              </div>
                             </div>
                           )}
                         </div>
@@ -496,9 +629,13 @@ function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   const head = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "000000" } } };
   const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "VALOR PDV"]];
   linhas.forEach((x) => {
-    x.produto.tamanhos.forEach((t) => {
-      const q = Number(x.grade[t] || 0);
-      if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, diaMes(x.produto.lancamento) + "/" + x.produto.lancamento.slice(0, 4), t, q, x.produto.preco, q * x.produto.preco]);
+    if (!x.qtd) return;
+    const ge = gradePorEntrega(x.produto, x.grade, x.entregas);
+    Object.keys(ge).sort().forEach((d) => {
+      x.produto.tamanhos.forEach((t) => {
+        const q = Number(ge[d][t] || 0);
+        if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, dataBR(d), t, q, x.produto.preco, q * x.produto.preco]);
+      });
     });
   });
   const res: any[][] = [["LOJA", "VERBA", "PEÇAS", "VALOR PDV", "% NO PEDIDO"]];
@@ -522,7 +659,8 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
   const pecas = ls.reduce((a, x) => a + x.qtd, 0);
   const valor = ls.reduce((a, x) => a + x.valor, 0);
   const verba = loja === "TODAS" ? tot.verba : pedido.lojas.find((l) => l.id === loja)?.verba || 0;
-  const porEntrega = ENTREGAS.map((d) => ({ d, q: ls.filter((x) => x.produto.lancamento === d).reduce((a, x) => a + x.qtd, 0) }));
+  const somaD = somaPorData(ls);
+  const porEntrega = Object.keys(somaD).sort().map((d) => ({ d, q: somaD[d] }));
   const maxE = Math.max(1, ...porEntrega.map((e) => e.q));
   const travado = pedido.status === "enviado";
 
@@ -540,9 +678,9 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <Card>
         <h3 className="text-sm font-extrabold mb-3">Por entrega</h3>
-        <div className="flex items-end gap-1.5 h-32">
+        <div className="flex items-end gap-1.5 h-32 overflow-x-auto no-scrollbar">
           {porEntrega.map(({ d, q }) => (
-            <div key={d} className="flex-1 flex flex-col items-center justify-end h-full gap-1 min-w-0">
+            <div key={d} className="flex-1 min-w-[2.25rem] flex flex-col items-center justify-end h-full gap-1">
               <div className="text-[9px] font-extrabold">{n0(q)}</div>
               <div className="w-full bg-black rounded-t" style={{ height: `${(q / maxE) * 70}%`, minHeight: q ? 2 : 0 }} />
               <div className="text-[8px] font-extrabold text-gray-400">{diaMes(d)}</div>

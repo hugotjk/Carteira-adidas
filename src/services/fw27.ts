@@ -44,6 +44,12 @@ export interface Fw27Pedido {
   subgrupos: Record<string, number>;
   /** Grade editada: chave "ARTIGO|lojaId" → { tamanho: peças }. */
   itens: Record<string, Record<string, number>>;
+  /** Entregas editadas: chave "ARTIGO|lojaId" → { "AAAA-MM-DD": peças }. */
+  entregas?: Record<string, Record<string, number>>;
+  /** Grade por entrega editada: chave → { data: { tamanho: peças } }. Quando existe, manda em tudo. */
+  gradeEntrega?: Record<string, Record<string, Record<string, number>>>;
+  /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
+  curva?: Record<string, number>;
   status: Fw27Status;
   atualizadoEm?: string;
   enviadoEm?: string;
@@ -141,6 +147,10 @@ export interface Fw27Linha {
   qtd: number;
   valor: number;
   editado: boolean;
+  /** Peças por data de entrega. */
+  entregas: Record<string, number>;
+  /** Peças por data e tamanho (fecha com a grade e com as entregas). */
+  gradeEntregas: Record<string, Record<string, number>>;
 }
 
 /** Todas as linhas loja × produto com a quantidade final (editada ou sugerida). */
@@ -152,8 +162,28 @@ export function calcular(pedido: Fw27Pedido): Fw27Linha[] {
       const sugerido = sugeridoLoja(pedido, p, l, pct);
       const editada = pedido.itens[chaveItem(p.artigo, l.id)];
       const grade = editada ? { ...gradeDe(p, 0), ...editada } : gradeDe(p, sugerido);
+      const k = chaveItem(p.artigo, l.id);
+      const matriz = pedido.gradeEntrega?.[k];
+      if (matriz) {
+        // Grade por entrega editada: as somas saem dela.
+        const datas = Array.from(new Set([...datasEntrega(p), ...Object.keys(matriz)])).sort();
+        const ge: Record<string, Record<string, number>> = {};
+        const g: Record<string, number> = {};
+        const ent: Record<string, number> = {};
+        p.tamanhos.forEach((t) => { g[t] = 0; });
+        datas.forEach((d) => {
+          ge[d] = {};
+          ent[d] = 0;
+          p.tamanhos.forEach((t) => { const q = Number(matriz[d]?.[t] || 0); ge[d][t] = q; g[t] += q; ent[d] += q; });
+        });
+        const q = somaGrade(g);
+        linhas.push({ produto: p, loja: l, sugerido, grade: g, qtd: q, valor: q * p.preco, editado: true, entregas: ent, gradeEntregas: ge });
+        return;
+      }
       const qtd = somaGrade(grade);
-      linhas.push({ produto: p, loja: l, sugerido, grade, qtd, valor: qtd * p.preco, editado: !!editada });
+      const entregas = entregasDaLinha(pedido, p, l.id, qtd);
+      const editado = !!editada || !!pedido.entregas?.[k];
+      linhas.push({ produto: p, loja: l, sugerido, grade, qtd, valor: qtd * p.preco, editado, entregas, gradeEntregas: gradePorEntrega(p, grade, entregas) });
     });
   });
   return linhas;
@@ -198,9 +228,155 @@ export function totais(pedido: Fw27Pedido, linhas: Fw27Linha[]): Fw27Totais {
   return { pecas, valor, verba, porLoja, porPack };
 }
 
-/** Datas de entrega (lançamentos), em ordem. */
-export const ENTREGAS: string[] = Array.from(new Set(PRODUTOS.map((p) => p.lancamento))).sort();
+/** Datas de lançamento, em ordem. */
+export const LANCAMENTOS: string[] = Array.from(new Set(PRODUTOS.map((p) => p.lancamento))).sort();
 
 const MESES = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
 export const mesDe = (iso: string) => MESES[Number(iso.slice(5, 7)) - 1] || iso;
 export const diaMes = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso);
+
+// ============================ ENTREGAS ============================
+//
+// Regras (Hugo, 22/10/2026):
+// - A 1ª entrega é sempre no lançamento.
+// - Depois, só nos dias 01 e 15 de cada mês, até 15/11.
+// - Cada entrega cobre as vendas até a próxima; o peso vem da curva de compra por mês.
+// - O lançamento leva um peso extra (abastecer a loja).
+// - Entrega com menos peças que o nº de tamanhos é pulada e as peças vão para a entrega anterior,
+//   para a grade não ficar quebrada.
+
+export const MESES_CURVA = ["05", "06", "07", "08", "09", "10", "11"];
+const DIAS_MIN_ENTRE_ENTREGAS = 7;
+const PESO_EXTRA_LANCAMENTO = 1.5;
+
+const dataUTC = (iso: string) => new Date(iso + "T00:00:00Z");
+const isoDe = (d: Date) => d.toISOString().slice(0, 10);
+const diasEntre = (a: string, b: string) => Math.round((dataUTC(b).getTime() - dataUTC(a).getTime()) / 86400000);
+const diasNoMes = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+
+/** Peso de cada mês na curva de compra (padrão: todos iguais). */
+export function curvaDe(pedido: Fw27Pedido): Record<string, number> {
+  const salvo = pedido.curva || {};
+  const out: Record<string, number> = {};
+  const temAlgum = MESES_CURVA.some((m) => salvo[m] !== undefined);
+  MESES_CURVA.forEach((m) => { out[m] = temAlgum ? Number(salvo[m] || 0) : 100 / MESES_CURVA.length; });
+  return out;
+}
+
+/** Datas de entrega de um produto: lançamento, depois 01 e 15 até 15/11. */
+export function datasEntrega(p: Fw27Produto): string[] {
+  const ano = Number(p.lancamento.slice(0, 4));
+  const limite = [`${ano}-11-15`, p.fim].filter(Boolean).sort()[0];
+  const out = [p.lancamento];
+  for (let m = Number(p.lancamento.slice(5, 7)); m <= 11; m++) {
+    for (const d of ["01", "15"]) {
+      const dt = `${ano}-${String(m).padStart(2, "0")}-${d}`;
+      if (dt <= p.lancamento || dt > limite) continue;
+      if (diasEntre(out[out.length - 1], dt) < DIAS_MIN_ENTRE_ENTREGAS) continue;
+      out.push(dt);
+    }
+  }
+  return out;
+}
+
+/** Peso de cada entrega: soma da curva diária dos dias que ela cobre (até a próxima entrega). */
+export function pesosEntrega(pedido: Fw27Pedido, p: Fw27Produto, datas = datasEntrega(p)): number[] {
+  const curva = curvaDe(pedido);
+  const fimVenda = p.fim && p.fim > datas[datas.length - 1] ? p.fim : isoDe(new Date(dataUTC(datas[datas.length - 1]).getTime() + 15 * 86400000));
+  return datas.map((d, i) => {
+    const ate = i + 1 < datas.length ? datas[i + 1] : fimVenda;
+    let peso = 0;
+    for (let t = dataUTC(d).getTime(); t < dataUTC(ate).getTime(); t += 86400000) {
+      const dia = new Date(t);
+      const mm = String(dia.getUTCMonth() + 1).padStart(2, "0");
+      peso += (curva[mm] || 0) / diasNoMes(dia.getUTCFullYear(), dia.getUTCMonth() + 1);
+    }
+    if (i === 0) peso *= PESO_EXTRA_LANCAMENTO;
+    return peso;
+  });
+}
+
+/** Junta entregas pequenas demais na entrega anterior (de trás para frente). */
+export function juntarPequenas(qs: number[], minimo: number): number[] {
+  const out = qs.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    if (out[i] > 0 && out[i] < minimo) { out[i - 1] += out[i]; out[i] = 0; }
+  }
+  return out;
+}
+
+/**
+ * Divide as peças entre as entregas. Se não der para todas terem o mínimo,
+ * fica com menos entregas, espalhadas pela curva (o lançamento sempre fica),
+ * e cada uma cobre também as datas puladas depois dela.
+ */
+export function dividirEntregas(qtd: number, pesos: number[], minimo: number): number[] {
+  const n = pesos.length;
+  if (!n) return [];
+  const min = Math.max(1, minimo);
+  const total = pesos.reduce((a, b) => a + b, 0) || 1;
+  const espalhar = (k: number) => {
+    if (k >= n) return dividir(qtd, pesos);
+    const manter = [0];
+    let acum = 0;
+    for (let i = 0; i < n && manter.length < k; i++) {
+      if (i > 0 && acum / total >= manter.length / k) manter.push(i);
+      acum += pesos[i];
+    }
+    const juntos = pesos.map(() => 0);
+    manter.forEach((ini, j) => {
+      const fim = j + 1 < manter.length ? manter[j + 1] : n;
+      for (let i = ini; i < fim; i++) juntos[ini] += pesos[i];
+    });
+    return dividir(qtd, juntos);
+  };
+  // Começa com o máximo de entregas possível e vai tirando até todas terem o mínimo.
+  for (let k = Math.max(1, Math.min(n, Math.floor(qtd / min))); k >= 1; k--) {
+    const qs = espalhar(k);
+    if (qs.every((q) => q === 0 || q >= min)) return qs;
+  }
+  return espalhar(1);
+}
+
+/** Entregas de uma loja: as editadas (se batem com o total) ou a divisão automática. */
+export function entregasDaLinha(pedido: Fw27Pedido, p: Fw27Produto, lojaId: string, qtd: number): Record<string, number> {
+  const datas = datasEntrega(p);
+  const editadas = pedido.entregas?.[chaveItem(p.artigo, lojaId)];
+  if (editadas) {
+    const soma = Object.values(editadas).reduce((a, b) => a + (Number(b) || 0), 0);
+    if (soma === qtd) {
+      const out: Record<string, number> = {};
+      datas.forEach((d) => { out[d] = Number(editadas[d] || 0); });
+      Object.keys(editadas).forEach((d) => { if (!(d in out)) out[d] = Number(editadas[d] || 0); });
+      return out;
+    }
+  }
+  const qs = dividirEntregas(qtd, pesosEntrega(pedido, p, datas), Math.max(1, p.tamanhos.length));
+  const out: Record<string, number> = {};
+  datas.forEach((d, i) => { out[d] = qs[i]; });
+  return out;
+}
+
+/** Divide a grade da loja entre as entregas, fechando exatamente por tamanho e por entrega. */
+export function gradePorEntrega(p: Fw27Produto, grade: Record<string, number>, entregas: Record<string, number>): Record<string, Record<string, number>> {
+  const datas = Object.keys(entregas).sort();
+  const resto = p.tamanhos.map((t) => Number(grade[t] || 0));
+  const out: Record<string, Record<string, number>> = {};
+  datas.forEach((d, i) => {
+    const q = Number(entregas[d] || 0);
+    const alvo = i === datas.length - 1 ? resto.slice() : dividir(Math.min(q, resto.reduce((a, b) => a + b, 0)), resto);
+    out[d] = {};
+    p.tamanhos.forEach((t, k) => { out[d][t] = alvo[k]; resto[k] -= alvo[k]; });
+  });
+  return out;
+}
+
+/** Redistribui um total mantendo o formato de uma grade (editada ou não). */
+export function gradeProporcional(p: Fw27Produto, base: Record<string, number>, total: number): Record<string, number> {
+  const pesos = p.tamanhos.map((t) => Number(base[t] || 0));
+  if (!pesos.some((x) => x > 0)) return gradeDe(p, total);
+  const qs = dividir(total, pesos);
+  const out: Record<string, number> = {};
+  p.tamanhos.forEach((t, i) => { out[t] = qs[i]; });
+  return out;
+}
