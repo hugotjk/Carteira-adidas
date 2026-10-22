@@ -795,9 +795,6 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
           </div>
         );
       })}
-      <p className="text-[10px] text-amber-700 mt-2">
-        O carrinho do site tem {ARTIGOS_NO_CARRINHO.size} artigos; {PRODUTOS.filter((p) => !ARTIGOS_NO_CARRINHO.has(p.artigo)).length} da AMD ainda não estão nele e não vão no arquivo. Para incluí-los, mande um carrinho com todos os artigos.
-      </p>
     </Card>
   );
 };
