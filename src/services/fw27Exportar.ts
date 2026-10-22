@@ -28,7 +28,8 @@ const COLS = "ABCDEF";
 const txt = (ref: string, s: number, v: string | null | undefined) =>
   v == null || v === "" ? `<c r="${ref}" s="${s}"></c>` : `<c r="${ref}" s="${s}" t="inlineStr"><is><t>${esc(String(v))}</t></is></c>`;
 const num = (ref: string, s: number, v: number | null) => (v == null ? `<c r="${ref}" s="${s}"></c>` : `<c r="${ref}" s="${s}" t="n"><v>${v}</v></c>`);
-const CAB6 = ["Sold To", "Article Number", "Requested Delivery Date", "Tamanho", "Observações", "Qty"];
+// "Size" em inglês: o site exporta "Tamanho", mas na importação só reconhece "Size" (testado em 22/10/2026).
+const CAB6 = ["Sold To", "Article Number", "Requested Delivery Date", "Size", "Observações", "Qty"];
 const ESTILO_CAB = [1, 1, 1, 1, 1, 2]; // mesmo do arquivo do site
 const ESTILO_DATA = [7, 8, 9]; // cor da coluna de data alterna como no site
 

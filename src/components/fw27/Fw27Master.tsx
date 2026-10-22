@@ -776,7 +776,7 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[] }> = ({ p
   return (
     <Card>
       <h3 className="text-sm font-extrabold">Exportar para o site adidas</h3>
-      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Um arquivo por loja, no mesmo formato do carrinho baixado do site (abas Apparel e Hardware, coluna Qty preenchida).</p>
+      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Um arquivo por loja, no formato de importação do site (abas Apparel e Hardware). No site, crie um carrinho para a loja e importe nele o arquivo dela: a loja é a do carrinho.</p>
       {pedido.lojas.map((l) => {
         const sem = !String(l.codAdidas || "").trim();
         const pc = linhas.filter((x) => x.loja.id === l.id).reduce((a, x) => a + (ARTIGOS_NO_CARRINHO.has(x.produto.artigo) ? x.qtd : 0), 0);
