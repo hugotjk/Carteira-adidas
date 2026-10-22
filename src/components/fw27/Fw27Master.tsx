@@ -9,7 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import {
-  PRODUTOS, SUBGRUPOS, LANCAMENTOS, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
+  PRODUTOS, SUBGRUPOS, LANCAMENTOS, datasEntrega, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
@@ -426,7 +426,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
   const [filtro, setFiltro] = React.useState("TODOS");
   const [busca, setBusca] = React.useState("");
   const [aberto, setAberto] = React.useState<string | null>(null);
-  const [lojaAberta, setLojaAberta] = React.useState<string | null>(null);
+  const [gradeAberta, setGradeAberta] = React.useState<string | null>(null);
 
   // Mudou a grade ou o total: as entregas voltam a ser divididas sozinhas.
   const setGrade = (p: Fw27Produto, lojaId: string, grade: Record<string, number>) =>
@@ -502,165 +502,148 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
         ))}
       </div>
 
-      {grupos.map(({ pk, ps }) => (
-        <div key={pk} className="space-y-2">
-          <div className="flex justify-between items-baseline px-1">
-            <div className="text-[11px] font-black uppercase tracking-widest">{pk}</div>
-            <div className="text-[10px] font-bold text-gray-400">{n0(tot.porPack[pk]?.pecas || 0)} peças · {brl(tot.porPack[pk]?.valor || 0)}</div>
-          </div>
-          {ps.map((p) => {
-            const ls = linhas.filter((x) => x.produto.artigo === p.artigo);
-            const total = ls.reduce((a, x) => a + x.qtd, 0);
-            const sug = ls.reduce((a, x) => a + x.sugerido, 0);
-            const editado = ls.some((x) => x.editado);
-            const open = aberto === p.artigo;
-            const tag = tagDe(p);
-            const mesesProd = somaPorMes(somaPorData(ls));
-            return (
-              <div key={p.artigo} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-                <button onClick={() => { setAberto(open ? null : p.artigo); setLojaAberta(null); }} className="w-full text-left p-3 flex gap-3">
-                  <ProductImage material={p.artigo} imageMap={imageMap} size="md" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-extrabold text-gray-400">{p.artigo}</span>
-                      <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5", tag.cls)}>{tag.label}</span>
-                      {editado && <span className="text-[8px] font-black rounded px-1.5 py-0.5 bg-amber-50 text-amber-700">EDITADO</span>}
-                    </div>
-                    <div className="text-xs font-extrabold leading-tight mt-0.5">{p.descricao}</div>
-                    <div className="text-[10px] font-bold text-blue-700 mt-1">Lança {diaMes(p.lancamento)} · finaliza {diaMes(p.fim)} · PDV R$ {p.preco.toFixed(2).replace(".", ",")}</div>
-                    {mesesProd.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {mesesProd.map((m) => (
-                          <span key={m.mes} className="text-[9px] font-bold bg-gray-50 rounded-md px-1.5 py-0.5">{(NOME_MES[m.mes] || m.mes).slice(0, 3).toUpperCase()} <b>{n0(m.q)}</b>{m.n > 1 ? ` · ${m.n}x` : ""}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-lg font-black leading-none">{n0(total)}</div>
-                    <div className="text-[9px] font-bold text-gray-400">peças</div>
-                    {editado && <div className="text-[9px] font-bold text-gray-400">sug. {n0(sug)}</div>}
-                    <div className="text-gray-300 mt-1 flex justify-end">{open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</div>
-                  </div>
-                </button>
-                {open && (() => {
-                  const datas = Array.from(new Set(ls.flatMap((x) => Object.keys(x.entregas)))).sort();
-                  const totData = (d: string) => ls.reduce((a, x) => a + (x.entregas[d] || 0), 0);
-                  const sel = ls.find((x) => x.loja.id === lojaAberta) || null;
-                  return (
-                  <div className="bg-gray-50/70 border-t border-gray-100 px-3 pb-3 pt-2 space-y-3">
-                    <div className="bg-white rounded-2xl border border-gray-100 p-3">
-                      <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">Quantidade por entrega e loja · toque na loja para ver a grade</div>
-                      <div className="overflow-x-auto no-scrollbar">
-                        <table className="w-full table-fixed text-[10px] border-separate" style={{ borderSpacing: "2px", minWidth: `${2.6 + (ls.length + 1) * 3.4}rem` }}>
-                          <thead>
-                            <tr>
-                              <th className="text-left font-extrabold text-gray-400 pr-1 w-[2.6rem] align-bottom">Entr.</th>
-                              {ls.map((x) => (
-                                <th key={x.loja.id} className="align-bottom">
-                                  <button onClick={() => setLojaAberta(lojaAberta === x.loja.id ? null : x.loja.id)}
-                                    className={cn("w-full rounded-lg px-1 py-1 text-[9px] font-extrabold leading-tight break-words", lojaAberta === x.loja.id ? "bg-black text-white" : "bg-gray-50 text-gray-700 hover:bg-gray-100")}>
-                                    {x.loja.nome}
-                                  </button>
-                                </th>
-                              ))}
-                              <th className="font-extrabold text-gray-400 align-bottom">Tot.</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {datas.map((d) => {
-                              const td = totData(d);
-                              return (
-                                <tr key={d}>
-                                  <td className={cn("pr-1 font-extrabold whitespace-nowrap", d === p.lancamento ? "text-blue-700" : td ? "" : "text-gray-300")}>{diaMes(d)}</td>
-                                  {ls.map((x) => (
-                                    <td key={x.loja.id}>
-                                      <NumInput ariaLabel={`${x.loja.nome} entrega ${diaMes(d)}`} value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", !x.entregas[d] && "text-gray-300", lojaAberta === x.loja.id && "ring-1 ring-black/20")} />
-                                    </td>
-                                  ))}
-                                  <td className={cn("text-center font-black", !td && "text-gray-300")}>{n0(td)}</td>
-                                </tr>
-                              );
-                            })}
-                            <tr>
-                              <td className="pr-1 font-black text-gray-500">Total</td>
-                              {ls.map((x) => (
-                                <td key={x.loja.id}>
-                                  <NumInput ariaLabel={`Total de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
+      {(() => {
+        // Colunas: todas as datas de entrega dos produtos visíveis (lançamentos + dias 01 e 15).
+        const colunas = Array.from(new Set(visiveis.flatMap((p) => datasEntrega(p)))).sort();
+        const nCol = colunas.length + 3;
+        const stickyCls = "sticky left-0 z-10";
+        const celW = "min-w-[3rem] w-[3rem]";
+        return (
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="text-[11px] border-separate" style={{ borderSpacing: 0 }}>
+                <thead>
+                  <tr className="text-[10px] text-gray-400">
+                    <th className={cn(stickyCls, "bg-white text-left font-extrabold px-3 py-2 min-w-[11rem] w-[11rem] md:min-w-[18rem] md:w-[18rem] border-b border-gray-100")}>Produto / loja</th>
+                    <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Total</th>
+                    <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Sug.</th>
+                    {colunas.map((d) => (
+                      <th key={d} className={cn("font-extrabold px-1 py-2 border-b border-gray-100 border-l border-gray-50", celW)}>
+                        <div className="text-gray-600">{d.slice(8, 10)}</div>
+                        <div className="text-[9px]">{mesDe(d)}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {grupos.map(({ pk, ps }) => (
+                    <React.Fragment key={pk}>
+                      <tr>
+                        <td className={cn(stickyCls, "bg-gray-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest")}>{pk}</td>
+                        <td colSpan={nCol - 1} className="bg-gray-50 px-2 py-1.5 text-[10px] font-bold text-gray-400">{n0(tot.porPack[pk]?.pecas || 0)} peças · {brl(tot.porPack[pk]?.valor || 0)}</td>
+                      </tr>
+                      {ps.map((p) => {
+                        const ls = linhas.filter((x) => x.produto.artigo === p.artigo);
+                        const total = ls.reduce((a, x) => a + x.qtd, 0);
+                        const sug = ls.reduce((a, x) => a + x.sugerido, 0);
+                        const editado = ls.some((x) => x.editado);
+                        const open = aberto === p.artigo;
+                        const tag = tagDe(p);
+                        const datasP = new Set(datasEntrega(p));
+                        const porData = somaPorData(ls);
+                        return (
+                          <React.Fragment key={p.artigo}>
+                            <tr className={cn("cursor-pointer", open ? "bg-blue-50/40" : "hover:bg-gray-50")} onClick={() => { setAberto(open ? null : p.artigo); setGradeAberta(null); }}>
+                              <td className={cn(stickyCls, open ? "bg-blue-50" : "bg-white", "px-3 py-2 border-b border-gray-100")}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="hidden md:block shrink-0"><ProductImage material={p.artigo} imageMap={imageMap} size="sm" /></div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <span className="text-[10px] font-extrabold text-gray-500">{p.artigo}</span>
+                                      <span className={cn("text-[8px] font-black rounded px-1 py-0.5", tag.cls)}>{tag.label}</span>
+                                      {editado && <span className="text-[8px] font-black rounded px-1 py-0.5 bg-amber-50 text-amber-700">EDIT.</span>}
+                                    </div>
+                                    <div className="text-[10px] md:text-[11px] font-extrabold leading-tight line-clamp-2">{p.descricao}</div>
+                                    <div className="text-[9px] font-bold text-blue-700">R$ {p.preco.toFixed(2).replace(".", ",")} {open ? "▲" : "▼"}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="text-center font-black border-b border-gray-100">{n0(total)}</td>
+                              <td className="text-center font-bold text-gray-400 border-b border-gray-100">{n0(sug)}</td>
+                              {colunas.map((d) => (
+                                <td key={d} className={cn("text-center border-b border-gray-100 border-l border-gray-50", !datasP.has(d) && "bg-gray-50/60", d === p.lancamento && "text-blue-700", "font-extrabold")}>
+                                  {datasP.has(d) ? (porData[d] ? n0(porData[d]) : <span className="text-gray-300">·</span>) : ""}
                                 </td>
                               ))}
-                              <td className="text-center font-black">{n0(total)}</td>
                             </tr>
-                            <tr className="text-gray-400">
-                              <td className="pr-1 font-bold">Sug.</td>
-                              {ls.map((x) => <td key={x.loja.id} className="text-center font-bold">{n0(x.sugerido)}</td>)}
-                              <td className="text-center font-bold">{n0(sug)}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="text-[9px] text-gray-400 mt-2">
-                        Azul = lançamento; depois dias 01 e 15 até 15/11. Datas em cinza foram puladas para a grade não ficar pequena (mínimo {p.tamanhos.length} peças por entrega). Mudar o total da loja divide de novo pelas entregas.
-                      </div>
-                    </div>
-                    {sel && (
-                            <div className="bg-white rounded-2xl border border-gray-100 p-3 mb-2">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Grade de {sel.loja.nome} · {n0(sel.qtd)} peças</span>
-                                {sel.editado && !travado && (
-                                  <button onClick={() => voltar(p, sel.loja.id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar à sugestão</button>
-                                )}
-                              </div>
-                              <div className="overflow-x-auto no-scrollbar">
-                                <table className="w-full table-fixed text-[10px] border-separate" style={{ borderSpacing: "2px", minWidth: `${2.6 + (p.tamanhos.length + 1) * 2.1}rem` }}>
-                                  <thead>
-                                    <tr className="text-gray-400">
-                                      <th className="text-left font-extrabold pr-1 w-[2.6rem]">Entr.</th>
-                                      {p.tamanhos.map((t) => <th key={t} className="font-extrabold">{t}</th>)}
-                                      <th className="font-extrabold">Tot.</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {Object.keys(sel.gradeEntregas).sort().map((d) => {
-                                      const vazio = !sel.entregas[d];
-                                      return (
-                                        <tr key={d}>
-                                          <td className={cn("pr-1 font-extrabold whitespace-nowrap", d === p.lancamento ? "text-blue-700" : vazio ? "text-gray-300" : "")}>{diaMes(d)}</td>
+                            {open && ls.map((x) => (
+                              <React.Fragment key={x.loja.id}>
+                                <tr className="bg-gray-50/50">
+                                  <td className={cn(stickyCls, "bg-gray-50 pl-6 pr-2 py-1 border-b border-gray-100")}>
+                                    <div className="text-[10px] font-extrabold truncate">{x.loja.nome}</div>
+                                    <div className="text-[9px] font-semibold text-gray-400">{brl(x.valor)}</div>
+                                  </td>
+                                  <td className="px-0.5 py-1 border-b border-gray-100">
+                                    <NumInput ariaLabel={`Total de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
+                                  </td>
+                                  <td className="text-center font-bold text-gray-400 border-b border-gray-100">{n0(x.sugerido)}</td>
+                                  {colunas.map((d) => {
+                                    const chave = x.loja.id + "|" + d;
+                                    const ativa = gradeAberta === chave;
+                                    return (
+                                      <td key={d} className={cn("px-0.5 py-1 border-b border-gray-100 border-l border-gray-50", !datasP.has(d) && "bg-gray-50")}>
+                                        {datasP.has(d) && (
+                                          <div onFocus={() => setGradeAberta(chave)} onClick={() => setGradeAberta(chave)}>
+                                            <NumInput ariaLabel={`${x.loja.nome} entrega ${diaMes(d)}`} value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)}
+                                              className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", !x.entregas[d] && "text-gray-300", d === p.lancamento && "text-blue-700", ativa && "ring-2 ring-black/60 bg-white")} />
+                                          </div>
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                                {gradeAberta && gradeAberta.startsWith(x.loja.id + "|") && (() => {
+                                  const d = gradeAberta.slice(x.loja.id.length + 1);
+                                  if (!datasP.has(d)) return null;
+                                  const g = x.gradeEntregas[d] || {};
+                                  return (
+                                    <tr>
+                                      <td className={cn(stickyCls, "bg-white pl-6 pr-2 py-2 border-b border-gray-200 align-top")}>
+                                        <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Grade</div>
+                                        <div className="text-[11px] font-black">{x.loja.nome}</div>
+                                        <div className="text-[10px] font-bold text-gray-500">Entrega {diaMes(d)} · {n0(x.entregas[d] || 0)} pçs</div>
+                                        <div className="mt-2 space-y-1 w-24">
                                           {p.tamanhos.map((t) => (
-                                            <td key={t}>
-                                              <NumInput ariaLabel={`${diaMes(d)} tamanho ${t}`} value={sel.gradeEntregas[d]?.[t] || 0} disabled={travado} onCommit={(v) => setCelula(p, sel, d, t, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", vazio && "text-gray-300")} />
-                                            </td>
+                                            <div key={t} className="flex items-center gap-2">
+                                              <span className="w-10 text-[10px] font-extrabold text-gray-500">{t}</span>
+                                              <NumInput ariaLabel={`${x.loja.nome} ${diaMes(d)} tamanho ${t}`} value={g[t] || 0} disabled={travado} onCommit={(v) => setCelula(p, x, d, t, v)} className={cn("w-12 h-7 text-center px-0 text-xs rounded-lg", !g[t] && "text-gray-300")} />
+                                            </div>
                                           ))}
-                                          <td>
-                                            <NumInput ariaLabel={`Total da entrega ${diaMes(d)}`} value={sel.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, sel, d, v)} className={cn("w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100", vazio && "text-gray-300")} />
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                    <tr className="text-gray-500">
-                                      <td className="pr-1 font-black">Total</td>
-                                      {p.tamanhos.map((t) => <td key={t} className="text-center font-black">{n0(sel.grade[t] || 0)}</td>)}
-                                      <td className="text-center font-black text-gray-900">{n0(sel.qtd)}</td>
+                                        </div>
+                                        <div className="flex gap-3 mt-2">
+                                          <button onClick={() => setGradeAberta(null)} className="text-[10px] font-bold text-gray-500 hover:text-black">Fechar</button>
+                                          {x.editado && !travado && <button onClick={() => voltar(p, x.loja.id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={10} /> Sugestão</button>}
+                                        </div>
+                                      </td>
+                                      <td colSpan={nCol - 1} className="bg-white border-b border-gray-200" />
                                     </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-                              <div className="text-[9px] text-gray-400 mt-2">
-                                Azul = lançamento; depois dias 01 e 15. Linhas em cinza foram puladas para a grade não ficar pequena (mínimo {p.tamanhos.length} peças por entrega). Mudar o total da entrega redistribui os tamanhos dela.
-                              </div>
-                            </div>
-                    )}
-                    {editado && !travado && (
-                      <button onClick={() => voltar(p)} className="text-[10px] font-bold text-gray-500 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar este produto à sugestão em todas as lojas</button>
-                    )}
-                  </div>
-                  );
-                })()}
-              </div>
-            );
-          })}
-        </div>
-      ))}
+                                  );
+                                })()}
+                              </React.Fragment>
+                            ))}
+                            {open && editado && !travado && (
+                              <tr>
+                                <td className={cn(stickyCls, "bg-white pl-6 py-2 border-b border-gray-100")}>
+                                  <button onClick={() => voltar(p)} className="text-[10px] font-bold text-gray-500 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Voltar produto à sugestão</button>
+                                </td>
+                                <td colSpan={nCol - 1} className="border-b border-gray-100" />
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-[10px] text-gray-400 px-3 py-2 border-t border-gray-100">
+              Clique no produto para abrir as lojas; clique numa entrega da loja para ver e mudar a grade. Azul = lançamento; depois dias 01 e 15 até 15/11.
+              Células com · foram puladas para a grade não ficar pequena (mínimo de uma peça por tamanho); dá para digitar nelas.
+            </div>
+          </div>
+        );
+      })()}
       {!grupos.length && <Card className="text-center text-sm text-gray-400 py-10">Nenhum produto encontrado.</Card>}
     </div>
   );
