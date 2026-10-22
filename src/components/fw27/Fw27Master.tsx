@@ -9,7 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import {
-  PRODUTOS, PACKS, ENTREGAS, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
+  PRODUTOS, SUBGRUPOS, ENTREGAS, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
@@ -175,7 +175,7 @@ const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais>
     const ls = linhas.filter((x) => x.produto.lancamento === d);
     return { d, ps, pecas: ls.reduce((a, x) => a + x.qtd, 0) };
   });
-  const maxPack = Math.max(1, ...PACKS.map((pk) => tot.porPack[pk]?.pecas || 0));
+  const maxPack = Math.max(1, ...SUBGRUPOS.map((pk) => tot.porPack[pk]?.pecas || 0));
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -197,7 +197,7 @@ const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais>
               <div className="flex flex-wrap gap-1.5 min-w-0">
                 {ps.map((p) => (
                   <span key={p.artigo} title={p.descricao} className="text-[10px] font-bold bg-gray-50 rounded-lg px-2 py-1">
-                    {p.artigo} <span className="text-gray-400 font-semibold">{p.pack}</span>
+                    {p.artigo} <span className="text-gray-400 font-semibold">{p.subgrupo}</span>
                   </span>
                 ))}
               </div>
@@ -206,9 +206,9 @@ const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais>
         </div>
       </Card>
       <Card>
-        <h3 className="text-sm font-extrabold mb-3">Por subgrupo (PACK da AMD)</h3>
-        {PACKS.map((pk) => {
-          const refs = PRODUTOS.filter((p) => p.pack === pk).length;
+        <h3 className="text-sm font-extrabold mb-3">Por subgrupo</h3>
+        {SUBGRUPOS.map((pk) => {
+          const refs = PRODUTOS.filter((p) => p.subgrupo === pk).length;
           const pc = tot.porPack[pk]?.pecas || 0;
           return (
             <div key={pk} className="grid grid-cols-[minmax(0,10rem)_1fr_4rem] gap-2 items-center py-1.5">
@@ -235,7 +235,7 @@ interface EditProps {
 const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
   const [nome, setNome] = React.useState("");
   const pct = pctSubgrupos(pedido);
-  const somaPct = PACKS.reduce((a, pk) => a + (pct[pk] || 0), 0);
+  const somaPct = SUBGRUPOS.reduce((a, pk) => a + (pct[pk] || 0), 0);
   const okSoma = Math.abs(somaPct - 100) < 0.05;
 
   const setLoja = (id: string, mud: Partial<Fw27Loja>) =>
@@ -326,13 +326,13 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
         <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
           <span>Subgrupo</span><span className="text-center">%</span><span className="text-right">No pedido</span>
         </div>
-        {PACKS.map((pk) => {
+        {SUBGRUPOS.map((pk) => {
           const t = tot.porPack[pk];
           return (
             <div key={pk} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem] gap-2 items-center py-2 border-t border-gray-50">
               <div className="min-w-0">
                 <div className="text-[11px] font-extrabold uppercase truncate">{pk}</div>
-                <div className="text-[10px] font-semibold text-gray-400">{PRODUTOS.filter((p) => p.pack === pk).length} refs · {brl((tot.verba * (pct[pk] || 0)) / 100)}</div>
+                <div className="text-[10px] font-semibold text-gray-400">{PRODUTOS.filter((p) => p.subgrupo === pk).length} refs · {brl((tot.verba * (pct[pk] || 0)) / 100)}</div>
               </div>
               <NumInput ariaLabel={`% do subgrupo ${pk}`} decimals={1} value={pct[pk] || 0} disabled={travado} onCommit={(v) => setPack(pk, v)} className="w-full" />
               <div className="text-right text-[10px] font-bold text-gray-500">
@@ -348,7 +348,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
       </Card>
       <p className="text-[10px] text-gray-400 px-2">
         Padrão: proporcional ao número de referências de cada subgrupo. Quando as vendas do PDV chegarem, o padrão passa a ser o peso de cada subgrupo (comprador) nas vendas de jun–nov.
-        Padrão atual: {PACKS.slice(0, 3).map((pk) => `${pk} ${pct1(subgruposPadrao()[pk])}`).join(", ")}…
+        Padrão atual: {SUBGRUPOS.slice(0, 3).map((pk) => `${pk} ${pct1(subgruposPadrao()[pk])}`).join(", ")}…
       </p>
     </div>
   );
@@ -373,8 +373,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     });
 
   const q = busca.trim().toUpperCase();
-  const visiveis = PRODUTOS.filter((p) => (filtro === "TODOS" || p.pack === filtro) && (!q || p.artigo.includes(q) || p.descricao.includes(q)));
-  const grupos = PACKS.map((pk) => ({ pk, ps: visiveis.filter((p) => p.pack === pk) })).filter((g) => g.ps.length);
+  const visiveis = PRODUTOS.filter((p) => (filtro === "TODOS" || p.subgrupo === filtro) && (!q || p.artigo.includes(q) || p.descricao.includes(q)));
+  const grupos = SUBGRUPOS.map((pk) => ({ pk, ps: visiveis.filter((p) => p.subgrupo === pk) })).filter((g) => g.ps.length);
 
   return (
     <div className="space-y-4">
@@ -400,7 +400,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar referência ou descrição" aria-label="Buscar produto" className="flex-1 min-w-0 bg-transparent outline-none text-sm font-semibold" />
       </div>
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-        {["TODOS", ...PACKS].map((f) => (
+        {["TODOS", ...SUBGRUPOS].map((f) => (
           <button key={f} onClick={() => setFiltro(f)} className={cn("shrink-0 h-9 px-3 rounded-xl text-[10px] font-extrabold border", filtro === f ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>{f}</button>
         ))}
       </div>
@@ -498,7 +498,7 @@ function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   linhas.forEach((x) => {
     x.produto.tamanhos.forEach((t) => {
       const q = Number(x.grade[t] || 0);
-      if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.pack, diaMes(x.produto.lancamento) + "/" + x.produto.lancamento.slice(0, 4), t, q, x.produto.preco, q * x.produto.preco]);
+      if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, diaMes(x.produto.lancamento) + "/" + x.produto.lancamento.slice(0, 4), t, q, x.produto.preco, q * x.produto.preco]);
     });
   });
   const res: any[][] = [["LOJA", "VERBA", "PEÇAS", "VALOR PDV", "% NO PEDIDO"]];
@@ -552,11 +552,11 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </Card>
       <Card>
         <h3 className="text-sm font-extrabold mb-2">Por subgrupo e referência</h3>
-        {PACKS.map((pk) => {
-          const lp = ls.filter((x) => x.produto.pack === pk);
+        {SUBGRUPOS.map((pk) => {
+          const lp = ls.filter((x) => x.produto.subgrupo === pk);
           const q = lp.reduce((a, x) => a + x.qtd, 0);
           if (!q) return null;
-          const refs = PRODUTOS.filter((p) => p.pack === pk).map((p) => ({ p, q: lp.filter((x) => x.produto.artigo === p.artigo).reduce((a, x) => a + x.qtd, 0) })).filter((r) => r.q);
+          const refs = PRODUTOS.filter((p) => p.subgrupo === pk).map((p) => ({ p, q: lp.filter((x) => x.produto.artigo === p.artigo).reduce((a, x) => a + x.qtd, 0) })).filter((r) => r.q);
           return (
             <div key={pk} className="py-2 border-t border-gray-50">
               <div className="flex justify-between text-[10px] font-black uppercase tracking-wide">
