@@ -11,7 +11,7 @@ import ProductImage from "../ProductImage";
 import { salvarArquivo } from "../../lib/salvarArquivo";
 import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
 import {
-  dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, DATAS_FORNECEDOR, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
+  dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
@@ -556,8 +556,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       </div>
 
       {(() => {
-        // Colunas: as datas de entrega aceitas pelo site da adidas.
-        const colunas = DATAS_FORNECEDOR;
+        // Colunas: dias 01 e 15 de jun a nov + lançamentos fora dessas datas.
+        const colunas = CALENDARIO;
         const nCol = colunas.length + 3;
         const stickyCls = "sticky left-0 z-10";
         const celW = "min-w-[3rem] w-[3rem]";
@@ -704,7 +704,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
               </table>
             </div>
             <div className="text-[10px] text-gray-400 px-3 py-2 border-t border-gray-100">
-              Clique no produto para abrir as lojas; clique no nome da loja para abrir a grade (um tamanho por linha, embaixo de cada entrega). As datas são as do site da adidas. Azul = 1ª entrega (lançamento, ou 01/06). Caixa tracejada = vazia, dá para digitar. – = antes do lançamento, não dá para comprar.
+              Clique no produto para abrir as lojas; clique no nome da loja para abrir a grade (um tamanho por linha, embaixo de cada entrega). Datas: lançamento, depois dias 01 e 15 até 15/11. Azul = 1ª entrega (lançamento, ou 01/06). Caixa tracejada = vazia, dá para digitar. – = antes do lançamento, não dá para comprar.
               Tudo é editável: mudar o total ou uma data do produto redistribui entre as lojas pelo % da sugestão.
             </div>
           </div>
