@@ -10,6 +10,7 @@ import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import { salvarArquivo } from "../../lib/salvarArquivo";
 import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
+import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
 import {
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
@@ -761,12 +762,14 @@ const BotaoConfirmar: React.FC<{ rotulo: React.ReactNode; confirmar: string | nu
 };
 
 /** Exportar para o site da adidas: um arquivo por loja, no formato do carrinho. */
-const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[] }> = ({ pedido, linhas }) => {
+const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegistro: () => void }> = ({ pedido, linhas, onRegistro }) => {
+  const { user } = useAuth();
   const [msg, setMsg] = React.useState<Record<string, string>>({});
   const baixar = async (l: Fw27Loja) => {
     try {
       const r = exportarLojaFornecedor(l, linhas);
       const st = await salvarArquivo(r.nomeArquivo, r.blob);
+      if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id])); onRegistro(); }
       const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs fora do carrinho do site não foram: ${r.foraDoCarrinho.map((f) => f.artigo).join(", ")}` : "";
       setMsg((m) => ({ ...m, [l.id]: st === "salvo" ? `Baixado: ${n0(r.pecas)} peças${fora}` : "Download cancelado" }));
     } catch (e: any) {
@@ -783,10 +786,10 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[] }> = ({ p
         return (
           <div key={l.id} className="flex items-center gap-2 py-2 border-t border-gray-50">
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-extrabold truncate">{l.nome} <span className="text-gray-400 font-bold">· {sem ? "sem código adidas" : l.codAdidas}</span></div>
+              <div className="text-xs font-extrabold truncate">{l.nome} <span className="text-gray-400 font-bold">· {sem ? "sem código adidas (Sold To em branco)" : l.codAdidas}</span></div>
               <div className="text-[10px] text-gray-500">{msg[l.id] || `${n0(pc)} peças de artigos do carrinho`}</div>
             </div>
-            <button disabled={sem} onClick={() => baixar(l)} className="h-9 px-3 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 disabled:opacity-30">
+            <button onClick={() => baixar(l)} className="h-9 px-3 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
               <Download size={13} /> Baixar
             </button>
           </div>
@@ -795,6 +798,33 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[] }> = ({ p
       <p className="text-[10px] text-amber-700 mt-2">
         O carrinho do site tem {ARTIGOS_NO_CARRINHO.size} artigos; {PRODUTOS.filter((p) => !ARTIGOS_NO_CARRINHO.has(p.artigo)).length} da AMD ainda não estão nele e não vão no arquivo. Para incluí-los, mande um carrinho com todos os artigos.
       </p>
+    </Card>
+  );
+};
+
+/** Histórico: tudo que foi baixado ou fechado, para comparar com a carteira. */
+const HistoricoCard: React.FC<{ versao: number }> = ({ versao }) => {
+  const [regs, setRegs] = React.useState<Fw27Registro[] | null>(null);
+  React.useEffect(() => { let vivo = true; listarRegistros().then((r) => vivo && setRegs(r)); return () => { vivo = false; }; }, [versao]);
+  return (
+    <Card>
+      <h3 className="text-sm font-extrabold">Histórico de pedidos</h3>
+      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Cada arquivo baixado e cada pedido fechado fica guardado aqui, com as quantidades daquele momento, para comparar com a carteira.</p>
+      {regs === null && <div className="text-[11px] text-gray-400 py-2">Carregando…</div>}
+      {regs && !regs.length && <div className="text-[11px] text-gray-400 py-2">Nada guardado ainda. Ao baixar um arquivo ou fechar o pedido, ele aparece aqui.</div>}
+      {regs && regs.slice(0, 50).map((r) => (
+        <div key={r.id} className="flex items-center gap-2 py-2 border-t border-gray-50">
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-extrabold truncate">
+              <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5 mr-1.5", r.tipo === "fechamento" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700")}>{r.tipo === "fechamento" ? "FECHADO" : "BAIXADO"}</span>
+              {r.lojas.join(", ")}
+            </div>
+            <div className="text-[10px] text-gray-500">{new Date(r.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} · {n0(r.pecas)} pçs · {brl(r.valor)}{r.por ? ` · ${r.por}` : ""}</div>
+          </div>
+          <button onClick={() => salvarArquivo(`FW27_${r.tipo === "fechamento" ? "fechado" : "baixado"}_${r.quando.slice(0, 16).replace(/[^0-9]/g, "")}.xlsx`, excelDoRegistro(r)).catch(() => {})}
+            className="h-8 px-2.5 rounded-lg bg-white border border-gray-200 text-[10px] font-black flex items-center gap-1"><Download size={12} /> Excel</button>
+        </div>
+      ))}
     </Card>
   );
 };
@@ -809,6 +839,13 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
   const porEntrega = Object.keys(somaD).sort().map((d) => ({ d, q: somaD[d] }));
   const maxE = Math.max(1, ...porEntrega.map((e) => e.q));
   const travado = pedido.status === "enviado";
+  const { user } = useAuth();
+  const [versaoHist, setVersaoHist] = React.useState(0);
+  const fechar = async () => {
+    atualizar((p) => ({ ...p, status: "enviado", enviadoEm: new Date().toISOString() }));
+    await salvarRegistro(montarRegistro("fechamento", user?.email || "", pedido, linhas));
+    setVersaoHist((v) => v + 1);
+  };
 
   return (
     <div className="space-y-4">
@@ -855,7 +892,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
           );
         })}
       </Card>
-      <ExportarCard pedido={pedido} linhas={linhas} />
+      <ExportarCard pedido={pedido} linhas={linhas} onRegistro={() => setVersaoHist((v) => v + 1)} />
       <div className="grid md:grid-cols-2 gap-2">
         <BotaoConfirmar
           rotulo={<><Download size={16} /> Excel de conferência</>}
@@ -874,12 +911,13 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
           <BotaoConfirmar
             rotulo={<><Lock size={16} /> Fechar pedido</>}
             confirmar="Toque de novo para fechar"
-            onConfirm={() => atualizar((p) => ({ ...p, status: "enviado", enviadoEm: new Date().toISOString() }))}
+            onConfirm={fechar}
             className="h-12 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2"
           />
         )}
       </div>
-      <p className="text-[10px] text-gray-400 px-2">Fechar trava o pedido para edição (só o master reabre). O Excel de conferência traz loja, artigo, entrega, tamanho e quantidade, para conferir antes de subir no site.</p>
+      <p className="text-[10px] text-gray-400 px-2">Fechar trava o pedido para edição (só o master reabre) e guarda uma cópia no histórico. O Excel de conferência traz loja, artigo, entrega, tamanho e quantidade, para conferir antes de subir no site.</p>
+      <HistoricoCard versao={versaoHist} />
     </div>
   );
 };

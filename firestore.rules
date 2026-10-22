@@ -77,6 +77,12 @@ service cloud.firestore {
       allow read, write: if isMaster();
     }
 
+    // Histórico FW27: cópia de cada exportação/fechamento. Quem usa a tela grava; só o master lê.
+    match /fw27Historico/{registroId} {
+      allow create: if isMaster();
+      allow read: if isMaster();
+    }
+
     match /orders/{orderId} {
       // Allow authenticated users to read orders
       allow read: if isAuthenticated();
