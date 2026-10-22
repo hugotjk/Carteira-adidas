@@ -2,14 +2,14 @@ import React from "react";
 import * as XLSX from "xlsx-js-style";
 import {
   Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Plus, Trash2, ChevronDown, ChevronUp,
-  Download, Lock, Unlock, RotateCcw, Cloud, CloudOff, Loader2, Search, EyeOff,
+  Download, Lock, Unlock, RotateCcw, X, Cloud, CloudOff, Loader2, Search, EyeOff,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import {
-  PRODUTOS, SUBGRUPOS, LANCAMENTOS, datasEntrega, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
+  dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
@@ -47,14 +47,14 @@ const tagDe = (p: Fw27Produto) =>
 
 /** Campo numérico que só grava ao sair do campo ou apertar Enter. */
 const NumInput: React.FC<{
-  value: number; onCommit: (v: number) => void; disabled?: boolean; className?: string; decimals?: number; ariaLabel: string;
-}> = ({ value, onCommit, disabled, className, decimals = 0, ariaLabel }) => {
-  const fmt = (v: number) => (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: decimals });
+  value: number; onCommit: (v: number) => void; disabled?: boolean; className?: string; decimals?: number; ariaLabel: string; zeroVazio?: boolean;
+}> = ({ value, onCommit, disabled, className, decimals = 0, ariaLabel, zeroVazio }) => {
+  const fmt = (v: number) => (zeroVazio && !Number(v) ? "" : (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: decimals }));
   const [txt, setTxt] = React.useState(fmt(value));
   const [foco, setFoco] = React.useState(false);
   React.useEffect(() => { if (!foco) setTxt(fmt(value)); }, [value, foco]);
   const commit = () => {
-    const v = Number(String(txt).replace(/\./g, "").replace(",", "."));
+    const v = String(txt).trim() === "" ? 0 : Number(String(txt).replace(/\./g, "").replace(",", "."));
     if (!isNaN(v) && v >= 0) onCommit(v); else setTxt(fmt(value));
   };
   return (
@@ -457,6 +457,48 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     m[d] = gradeProporcional(p, base, Math.round(v));
     salvarMatriz(p, x, m);
   };
+  // Mudou o total de um tamanho na loja: espalha pelas entregas como esse tamanho já estava (ou como as entregas estão).
+  const setTamanhoTotal = (p: Fw27Produto, x: Fw27Linha, t: string, v: number) => {
+    const datas = Object.keys(x.gradeEntregas).sort().filter((d) => podeComprar(p, d));
+    let pesos = datas.map((d) => Number(x.gradeEntregas[d]?.[t] || 0));
+    if (!pesos.some((w) => w > 0)) pesos = datas.map((d) => Number(x.entregas[d] || 0));
+    if (!pesos.some((w) => w > 0)) pesos = datas.map((_, i) => (i === 0 ? 1 : 0));
+    const qs = dividir(Math.round(v), pesos);
+    const m = JSON.parse(JSON.stringify(x.gradeEntregas)) as Record<string, Record<string, number>>;
+    datas.forEach((d, i) => { m[d] = m[d] || {}; m[d][t] = qs[i]; });
+    salvarMatriz(p, x, m);
+  };
+  // Peso de cada loja ao redistribuir uma quantidade do produto: o que já tem, senão a sugestão, senão a verba.
+  const pesosLojas = (ls: Fw27Linha[], atual: (x: Fw27Linha) => number) => {
+    const a = ls.map(atual);
+    if (a.some((v) => v > 0)) return a;
+    const s = ls.map((x) => x.sugerido);
+    if (s.some((v) => v > 0)) return s;
+    return ls.map((x) => Number(x.loja.verba || 0) || 1);
+  };
+  // Mudou o total do produto: divide entre as lojas pelo % da sugestão.
+  const setTotalProduto = (p: Fw27Produto, ls: Fw27Linha[], v: number) => {
+    const qs = dividir(Math.round(v), pesosLojas(ls, (x) => x.sugerido));
+    atualizar((pd) => {
+      const itens = { ...pd.itens }; const entregas = { ...(pd.entregas || {}) }; const gradeEntrega = { ...(pd.gradeEntrega || {}) };
+      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i]); delete entregas[k]; delete gradeEntrega[k]; });
+      return { ...pd, itens, entregas, gradeEntrega };
+    });
+  };
+  // Mudou uma data do produto: divide entre as lojas pelo que cada uma já tem nela (ou pela sugestão).
+  const setDataProduto = (p: Fw27Produto, ls: Fw27Linha[], d: string, v: number) => {
+    const qs = dividir(Math.round(v), pesosLojas(ls, (x) => x.entregas[d] || 0));
+    atualizar((pd) => {
+      const gradeEntrega = { ...(pd.gradeEntrega || {}) };
+      ls.forEach((x, i) => {
+        const m = JSON.parse(JSON.stringify(x.gradeEntregas)) as Record<string, Record<string, number>>;
+        const atual = m[d] || {};
+        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i]);
+        gradeEntrega[chaveItem(p.artigo, x.loja.id)] = m;
+      });
+      return { ...pd, gradeEntrega };
+    });
+  };
   const voltar = (p: Fw27Produto, lojaId?: string) =>
     atualizar((pd) => {
       const itens = { ...pd.itens };
@@ -539,7 +581,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                         const editado = ls.some((x) => x.editado);
                         const open = aberto === p.artigo;
                         const tag = tagDe(p);
-                        const datasP = new Set(datasEntrega(p));
+                        const pode = (d: string) => podeComprar(p, d);
+                        const ini = inicioCompra(p);
                         const porData = somaPorData(ls);
                         return (
                           <React.Fragment key={p.artigo}>
@@ -558,69 +601,76 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                   </div>
                                 </div>
                               </td>
-                              <td className="text-center font-black border-b border-gray-100">{n0(total)}</td>
+                              <td className="px-0.5 py-1 border-b border-gray-100" onClick={(e) => e.stopPropagation()}>
+                                <NumInput ariaLabel={`Total de ${p.artigo}`} value={total} disabled={travado} onCommit={(v) => setTotalProduto(p, ls, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
+                              </td>
                               <td className="text-center font-bold text-gray-400 border-b border-gray-100">{n0(sug)}</td>
                               {colunas.map((d) => (
-                                <td key={d} className={cn("text-center border-b border-gray-100 border-l border-gray-50", !datasP.has(d) && "bg-gray-50/60", d === p.lancamento && "text-blue-700", "font-extrabold")}>
-                                  {datasP.has(d) ? (porData[d] ? n0(porData[d]) : <span className="text-gray-300">·</span>) : ""}
+                                <td key={d} className={cn("px-0.5 py-1 text-center border-b border-gray-100 border-l border-gray-50", !pode(d) && "bg-gray-50/60")} onClick={(e) => pode(d) && e.stopPropagation()}>
+                                  {pode(d) ? (
+                                    <NumInput ariaLabel={`${p.artigo} entrega ${diaMes(d)}`} zeroVazio value={porData[d] || 0} disabled={travado} onCommit={(v) => setDataProduto(p, ls, d, v)}
+                                      className={cn("w-full h-8 text-center px-0 text-xs rounded-lg font-black bg-transparent hover:bg-gray-100 focus:bg-white", !porData[d] && "text-gray-300", d === ini && "text-blue-700")} />
+                                  ) : <span className="text-gray-300 font-bold">–</span>}
                                 </td>
                               ))}
                             </tr>
-                            {open && ls.map((x) => (
+                            {open && ls.map((x) => {
+                              const lojaKey = p.artigo + "|" + x.loja.id;
+                              const gOpen = gradeAberta === lojaKey;
+                              return (
                               <React.Fragment key={x.loja.id}>
                                 <tr className="bg-gray-50/50">
-                                  <td className={cn(stickyCls, "bg-gray-50 pl-6 pr-2 py-1 border-b border-gray-100")}>
-                                    <div className="text-[10px] font-extrabold truncate">{x.loja.nome}</div>
-                                    <div className="text-[9px] font-semibold text-gray-400">{brl(x.valor)}</div>
+                                  <td className={cn(stickyCls, gOpen ? "bg-gray-100" : "bg-gray-50", "pl-6 pr-2 py-1 border-b border-gray-100")}>
+                                    <button onClick={() => setGradeAberta(gOpen ? null : lojaKey)} className="w-full text-left" aria-expanded={gOpen}>
+                                      <div className="text-[10px] font-extrabold truncate">{x.loja.nome}</div>
+                                      <div className="text-[9px] font-semibold text-gray-400">{brl(x.valor)} · <span className="text-blue-700 font-bold">{gOpen ? "▲ fechar grade" : "▼ ver grade"}</span></div>
+                                    </button>
                                   </td>
                                   <td className="px-0.5 py-1 border-b border-gray-100">
                                     <NumInput ariaLabel={`Total de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
                                   </td>
                                   <td className="text-center font-bold text-gray-400 border-b border-gray-100">{n0(x.sugerido)}</td>
-                                  {colunas.map((d) => {
-                                    const chave = x.loja.id + "|" + d;
-                                    const ativa = gradeAberta === chave;
-                                    return (
-                                      <td key={d} className={cn("px-0.5 py-1 border-b border-gray-100 border-l border-gray-50", !datasP.has(d) && "bg-gray-50")}>
-                                        {datasP.has(d) && (
-                                          <div onFocus={() => setGradeAberta(chave)} onClick={() => setGradeAberta(chave)}>
-                                            <NumInput ariaLabel={`${x.loja.nome} entrega ${diaMes(d)}`} value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)}
-                                              className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", !x.entregas[d] && "text-gray-300", d === p.lancamento && "text-blue-700", ativa && "ring-2 ring-black/60 bg-white")} />
-                                          </div>
+                                  {colunas.map((d) => (
+                                    <td key={d} className={cn("px-0.5 py-1 text-center border-b border-gray-100 border-l border-gray-50", !pode(d) && "bg-gray-50")}>
+                                      {pode(d) ? (
+                                        <NumInput ariaLabel={`${x.loja.nome} entrega ${diaMes(d)}`} zeroVazio value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)}
+                                          className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", !x.entregas[d] && "text-gray-300", d === ini && "text-blue-700")} />
+                                      ) : <span className="text-gray-300 font-bold">–</span>}
+                                    </td>
+                                  ))}
+                                </tr>
+                                {gOpen && p.tamanhos.map((t, ti) => {
+                                  const totT = Number(x.grade[t] || 0);
+                                  const ultima = ti === p.tamanhos.length - 1;
+                                  return (
+                                    <tr key={t} className="bg-white">
+                                      <td className={cn(stickyCls, "bg-white pl-10 pr-2 py-0.5", ultima && "border-b border-gray-200")}>
+                                        <span className="text-[10px] font-extrabold text-gray-500">{t}</span>
+                                        {ti === 0 && x.editado && !travado && (
+                                          <button onClick={() => voltar(p, x.loja.id)} className="ml-2 text-[9px] font-bold text-gray-400 hover:text-black inline-flex items-center gap-0.5"><RotateCcw size={9} /> sugestão</button>
                                         )}
                                       </td>
-                                    );
-                                  })}
-                                </tr>
-                                {gradeAberta && gradeAberta.startsWith(x.loja.id + "|") && (() => {
-                                  const d = gradeAberta.slice(x.loja.id.length + 1);
-                                  if (!datasP.has(d)) return null;
-                                  const g = x.gradeEntregas[d] || {};
-                                  return (
-                                    <tr>
-                                      <td className={cn(stickyCls, "bg-white pl-6 pr-2 py-2 border-b border-gray-200 align-top")}>
-                                        <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Grade</div>
-                                        <div className="text-[11px] font-black">{x.loja.nome}</div>
-                                        <div className="text-[10px] font-bold text-gray-500">Entrega {diaMes(d)} · {n0(x.entregas[d] || 0)} pçs</div>
-                                        <div className="mt-2 space-y-1 w-24">
-                                          {p.tamanhos.map((t) => (
-                                            <div key={t} className="flex items-center gap-2">
-                                              <span className="w-10 text-[10px] font-extrabold text-gray-500">{t}</span>
-                                              <NumInput ariaLabel={`${x.loja.nome} ${diaMes(d)} tamanho ${t}`} value={g[t] || 0} disabled={travado} onCommit={(v) => setCelula(p, x, d, t, v)} className={cn("w-12 h-7 text-center px-0 text-xs rounded-lg", !g[t] && "text-gray-300")} />
-                                            </div>
-                                          ))}
-                                        </div>
-                                        <div className="flex gap-3 mt-2">
-                                          <button onClick={() => setGradeAberta(null)} className="text-[10px] font-bold text-gray-500 hover:text-black">Fechar</button>
-                                          {x.editado && !travado && <button onClick={() => voltar(p, x.loja.id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={10} /> Sugestão</button>}
-                                        </div>
+                                      <td className={cn("px-0.5 py-0.5", ultima && "border-b border-gray-200")}>
+                                        <NumInput ariaLabel={`${x.loja.nome} total tamanho ${t}`} value={totT} disabled={travado} onCommit={(v) => setTamanhoTotal(p, x, t, v)} className={cn("w-full h-7 text-center px-0 text-[11px] rounded-md bg-gray-50 font-bold", !totT && "text-gray-300")} />
                                       </td>
-                                      <td colSpan={nCol - 1} className="bg-white border-b border-gray-200" />
+                                      <td className={cn(ultima && "border-b border-gray-200")} />
+                                      {colunas.map((d) => {
+                                        const q = Number(x.gradeEntregas[d]?.[t] || 0);
+                                        return (
+                                          <td key={d} className={cn("px-0.5 py-0.5 text-center border-l border-gray-50", !pode(d) && "bg-gray-50", ultima && "border-b border-gray-200")}>
+                                            {pode(d) ? (
+                                              <NumInput ariaLabel={`${x.loja.nome} ${diaMes(d)} tamanho ${t}`} zeroVazio value={q} disabled={travado} onCommit={(v) => setCelula(p, x, d, t, v)}
+                                                className={cn("w-full h-7 text-center px-0 text-[11px] rounded-md bg-gray-50", !q && "text-gray-300")} />
+                                            ) : null}
+                                          </td>
+                                        );
+                                      })}
                                     </tr>
                                   );
-                                })()}
+                                })}
                               </React.Fragment>
-                            ))}
+                              );
+                            })}
                             {open && editado && !travado && (
                               <tr>
                                 <td className={cn(stickyCls, "bg-white pl-6 py-2 border-b border-gray-100")}>
@@ -638,8 +688,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
               </table>
             </div>
             <div className="text-[10px] text-gray-400 px-3 py-2 border-t border-gray-100">
-              Clique no produto para abrir as lojas; clique numa entrega da loja para ver e mudar a grade. Azul = lançamento; depois dias 01 e 15 até 15/11.
-              Células com · foram puladas para a grade não ficar pequena (mínimo de uma peça por tamanho); dá para digitar nelas.
+              Clique no produto para abrir as lojas; clique no nome da loja para abrir a grade (um tamanho por linha, embaixo de cada entrega). Azul = 1ª entrega (lançamento, ou 01/06). Depois a sugestão usa os dias 01 e 15 até 15/11; datas com 0 foram puladas para a grade não ficar pequena. – = antes do lançamento, não dá para comprar.
+              Tudo é editável: mudar o total ou uma data do produto redistribui entre as lojas pelo % da sugestão.
             </div>
           </div>
         );

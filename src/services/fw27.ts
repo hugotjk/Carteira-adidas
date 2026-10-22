@@ -245,7 +245,20 @@ export const diaMes = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}/
 // - Entrega com menos peças que o nº de tamanhos é pulada e as peças vão para a entrega anterior,
 //   para a grade não ficar quebrada.
 
-export const MESES_CURVA = ["05", "06", "07", "08", "09", "10", "11"];
+export const MESES_CURVA = ["06", "07", "08", "09", "10", "11"];
+/** Não existe compra antes de junho: produto que lança antes começa a comprar em 01/06. */
+const PRIMEIRO_DIA_COMPRA = "-06-01";
+const ULTIMO_DIA_COMPRA = "-11-15";
+
+/** Primeira data em que dá para comprar o produto (lançamento, ou 01/06 se lançar antes). */
+export function inicioCompra(p: Fw27Produto): string {
+  const min = p.lancamento.slice(0, 4) + PRIMEIRO_DIA_COMPRA;
+  return p.lancamento < min ? min : p.lancamento;
+}
+/** Pode comprar nesta data? Só bloqueia antes do lançamento (e fora de jun–15/nov). */
+export function podeComprar(p: Fw27Produto, data: string): boolean {
+  return data >= inicioCompra(p) && data <= p.lancamento.slice(0, 4) + ULTIMO_DIA_COMPRA;
+}
 const DIAS_MIN_ENTRE_ENTREGAS = 7;
 const PESO_EXTRA_LANCAMENTO = 1.5;
 
@@ -266,12 +279,13 @@ export function curvaDe(pedido: Fw27Pedido): Record<string, number> {
 /** Datas de entrega de um produto: lançamento, depois 01 e 15 até 15/11. */
 export function datasEntrega(p: Fw27Produto): string[] {
   const ano = Number(p.lancamento.slice(0, 4));
-  const limite = [`${ano}-11-15`, p.fim].filter(Boolean).sort()[0];
-  const out = [p.lancamento];
-  for (let m = Number(p.lancamento.slice(5, 7)); m <= 11; m++) {
+  const limite = [`${ano}${ULTIMO_DIA_COMPRA}`, p.fim].filter(Boolean).sort()[0];
+  const inicio = inicioCompra(p);
+  const out = [inicio];
+  for (let m = Number(inicio.slice(5, 7)); m <= 11; m++) {
     for (const d of ["01", "15"]) {
       const dt = `${ano}-${String(m).padStart(2, "0")}-${d}`;
-      if (dt <= p.lancamento || dt > limite) continue;
+      if (dt <= inicio || dt > limite) continue;
       if (diasEntre(out[out.length - 1], dt) < DIAS_MIN_ENTRE_ENTREGAS) continue;
       out.push(dt);
     }
