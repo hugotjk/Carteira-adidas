@@ -769,7 +769,7 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
     try {
       const r = exportarLojaFornecedor(l, linhas);
       const st = await salvarArquivo(r.nomeArquivo, r.blob);
-      if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id])); onRegistro(); }
+      if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id], user?.uid)); onRegistro(); }
       const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs fora do carrinho do site não foram: ${r.foraDoCarrinho.map((f) => f.artigo).join(", ")}` : "";
       setMsg((m) => ({ ...m, [l.id]: st === "salvo" ? `Baixado: ${n0(r.pecas)} peças${fora}` : "Download cancelado" }));
     } catch (e: any) {
@@ -804,8 +804,15 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
 
 /** Histórico: tudo que foi baixado ou fechado, para comparar com a carteira. */
 const HistoricoCard: React.FC<{ versao: number }> = ({ versao }) => {
+  const { user, userProfile } = useAuth();
   const [regs, setRegs] = React.useState<Fw27Registro[] | null>(null);
-  React.useEffect(() => { let vivo = true; listarRegistros().then((r) => vivo && setRegs(r)); return () => { vivo = false; }; }, [versao]);
+  React.useEffect(() => {
+    let vivo = true;
+    // Mesmo filtro de acesso do login (cadastrado no Banco): master/ALL vê tudo.
+    const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
+    listarRegistros({ uid: user?.uid, tudo, tipo: userProfile?.accessType, valores: userProfile?.accessValues }).then((r) => vivo && setRegs(r));
+    return () => { vivo = false; };
+  }, [versao, user?.uid, userProfile]);
   return (
     <Card>
       <h3 className="text-sm font-extrabold">Histórico de pedidos</h3>
@@ -843,7 +850,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
   const [versaoHist, setVersaoHist] = React.useState(0);
   const fechar = async () => {
     atualizar((p) => ({ ...p, status: "enviado", enviadoEm: new Date().toISOString() }));
-    await salvarRegistro(montarRegistro("fechamento", user?.email || "", pedido, linhas));
+    await salvarRegistro(montarRegistro("fechamento", user?.email || "", pedido, linhas, undefined, user?.uid));
     setVersaoHist((v) => v + 1);
   };
 

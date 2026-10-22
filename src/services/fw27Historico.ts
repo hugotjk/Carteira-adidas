@@ -20,7 +20,10 @@ export interface Fw27Registro {
   quando: string; // ISO
   tipo: TipoRegistro;
   por: string; // e-mail de quem fez
+  porUid?: string; // login de quem fez
   lojas: string[];
+  /** Gestores das lojas do registro: define quem vê (login do gestor, do sócio da loja e o master). */
+  gestores?: string[];
   pecas: number;
   valor: number;
   itens: ItemRegistro[];
@@ -30,7 +33,7 @@ const COLECAO = "fw27Historico";
 const CHAVE_LOCAL = "fw27-historico";
 
 /** Monta o registro do que está no pedido agora (todas as lojas, ou só as indicadas). */
-export function montarRegistro(tipo: TipoRegistro, por: string, pedido: Fw27Pedido, linhas: Fw27Linha[], lojaIds?: string[]): Fw27Registro {
+export function montarRegistro(tipo: TipoRegistro, por: string, pedido: Fw27Pedido, linhas: Fw27Linha[], lojaIds?: string[], porUid?: string): Fw27Registro {
   const ids = new Set(lojaIds || pedido.lojas.map((l) => l.id));
   const itens: ItemRegistro[] = [];
   linhas.filter((x) => ids.has(x.loja.id)).forEach((x) => {
@@ -47,7 +50,9 @@ export function montarRegistro(tipo: TipoRegistro, por: string, pedido: Fw27Pedi
     quando: agora,
     tipo,
     por,
+    porUid: porUid || "",
     lojas: pedido.lojas.filter((l) => ids.has(l.id)).map((l) => l.nome),
+    gestores: Array.from(new Set(pedido.lojas.filter((l) => ids.has(l.id)).map((l) => (l.gestor || "").toUpperCase()).filter(Boolean))),
     pecas: itens.reduce((a, i) => a + i[6], 0),
     valor: itens.reduce((a, i) => a + i[6] * i[7], 0),
     itens,
@@ -69,15 +74,26 @@ export async function salvarRegistro(r: Fw27Registro): Promise<boolean> {
   }
 }
 
+/** Quem pode ver um registro: master/ALL vê tudo; GESTOR vê os dos seus gestores; LOJA vê os das suas lojas; e sempre os que a própria pessoa fez. */
+export interface AcessoHistorico { uid?: string; tudo: boolean; tipo?: string; valores?: string[] }
+export function podeVer(r: Fw27Registro, a: AcessoHistorico): boolean {
+  if (a.tudo) return true;
+  if (a.uid && r.porUid === a.uid) return true;
+  const v = new Set((a.valores || []).map((x) => x.toUpperCase().trim()));
+  if (a.tipo === "GESTOR") return (r.gestores || []).some((g) => v.has(g.toUpperCase()));
+  if (a.tipo === "LOJA") return r.lojas.some((l) => v.has(l.toUpperCase()));
+  return false;
+}
+
 /** Lista os registros (Firebase + aparelho), mais novos primeiro. */
-export async function listarRegistros(): Promise<Fw27Registro[]> {
+export async function listarRegistros(acesso: AcessoHistorico = { tudo: true }): Promise<Fw27Registro[]> {
   const porId = new Map<string, Fw27Registro>();
   (await lerLocal()).forEach((r) => porId.set(r.id, r));
   try {
     const snap = await getDocs(collection(db, COLECAO));
     snap.docs.forEach((d: any) => porId.set(d.id, d.data() as Fw27Registro));
   } catch { /* sem acesso ainda: fica só o do aparelho */ }
-  return Array.from(porId.values()).sort((a, b) => (a.quando < b.quando ? 1 : -1));
+  return Array.from(porId.values()).filter((r) => podeVer(r, acesso)).sort((a, b) => (a.quando < b.quando ? 1 : -1));
 }
 
 /** Excel de um registro: uma linha por loja × artigo × entrega × tamanho (para comparar com a carteira). */

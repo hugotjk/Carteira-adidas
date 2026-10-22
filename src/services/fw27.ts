@@ -36,6 +36,8 @@ export interface Fw27Loja {
   verba: number; // R$ a preço PDV
   /** Código adidas da loja (Sold To / Número do Destinatário no site). */
   codAdidas?: string;
+  /** Gestor da loja (vem da lista loja → gestor). Usado para filtrar quem vê o quê. */
+  gestor?: string;
 }
 
 export type Fw27Status = "rascunho" | "enviado";
