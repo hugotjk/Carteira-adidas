@@ -8,8 +8,10 @@ import { cn } from "../../lib/utils";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
+import { salvarArquivo } from "../../lib/salvarArquivo";
+import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
 import {
-  dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
+  dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, DATAS_FORNECEDOR, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
@@ -276,11 +278,12 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
     setNome("");
   };
   const delLoja = (l: Fw27Loja) => {
-    if (!window.confirm(`Tirar a loja ${l.nome} do pedido? O que foi editado nela se perde.`)) return;
     atualizar((p) => {
       const itens = { ...p.itens };
-      Object.keys(itens).forEach((k) => { if (k.endsWith("|" + l.id)) delete itens[k]; });
-      return { ...p, lojas: p.lojas.filter((x) => x.id !== l.id), itens };
+      const entregas = { ...(p.entregas || {}) };
+      const gradeEntrega = { ...(p.gradeEntrega || {}) };
+      [itens, entregas, gradeEntrega].forEach((o: Record<string, unknown>) => Object.keys(o).forEach((k) => { if (k.endsWith("|" + l.id)) delete o[k]; }));
+      return { ...p, lojas: p.lojas.filter((x) => x.id !== l.id), itens, entregas, gradeEntrega };
     });
   };
   const setPctLoja = (l: Fw27Loja, v: number) => {
@@ -319,14 +322,22 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
           return (
             <div key={l.id} className="grid grid-cols-[minmax(0,1fr)_4.5rem_7rem_2rem] gap-2 items-center py-2.5 border-t border-gray-50">
               <div className="min-w-0">
-                <div className="text-xs font-extrabold truncate">{l.nome}</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs font-extrabold truncate">{l.nome}</span>
+                  <input aria-label={`Código adidas da loja ${l.nome}`} disabled={travado} defaultValue={l.codAdidas || ""} placeholder="cód. adidas"
+                    onBlur={(e) => { const v = e.target.value.replace(/\D/g, ""); if (v !== (l.codAdidas || "")) setLoja(l.id, { codAdidas: v }); }}
+                    className="w-24 shrink-0 bg-gray-50 rounded-md px-1.5 h-6 text-[10px] font-bold text-gray-600 outline-none focus:ring-2 focus:ring-black/10" />
+                </div>
                 <div className="text-[10px] font-semibold text-gray-400 mt-0.5">
                   No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
                 </div>
               </div>
               <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={t?.pctSugerido || 0} disabled={travado || !tot.verba} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
               <NumInput ariaLabel={`Verba da loja ${l.nome}`} value={l.verba} disabled={travado} onCommit={(v) => setLoja(l.id, { verba: v })} className="w-full" />
-              <button aria-label={`Tirar ${l.nome}`} disabled={travado} onClick={() => delLoja(l)} className="h-9 w-8 flex items-center justify-center text-gray-300 hover:text-red-500 disabled:opacity-30"><Trash2 size={15} /></button>
+              {travado ? <span /> : (
+                <BotaoConfirmar rotulo={<Trash2 size={15} />} confirmar="Tirar?" onConfirm={() => delLoja(l)}
+                  className="h-9 min-w-8 px-1 rounded-lg flex items-center justify-center text-[9px] font-black text-gray-300 hover:text-red-500" />
+              )}
             </div>
           );
         })}
@@ -545,11 +556,15 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       </div>
 
       {(() => {
-        // Colunas: todas as datas de entrega dos produtos visíveis (lançamentos + dias 01 e 15).
-        const colunas = Array.from(new Set(visiveis.flatMap((p) => datasEntrega(p)))).sort();
+        // Colunas: as datas de entrega aceitas pelo site da adidas.
+        const colunas = DATAS_FORNECEDOR;
         const nCol = colunas.length + 3;
         const stickyCls = "sticky left-0 z-10";
         const celW = "min-w-[3rem] w-[3rem]";
+        // Linha vertical mais forte quando muda o mês.
+        const sepMes = (i: number) => (i === 0 || colunas[i - 1].slice(5, 7) !== colunas[i].slice(5, 7) ? "border-l-2 border-l-gray-300" : "border-l border-l-gray-100");
+        // Caixa de digitação: tracejada quando vazia, para ver onde clicar.
+        const caixa = (vazio: boolean) => (vazio ? "border border-dashed border-gray-300 bg-white/70 hover:border-gray-500" : "border border-gray-200 bg-white hover:border-gray-400");
         return (
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -559,8 +574,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                     <th className={cn(stickyCls, "bg-white text-left font-extrabold px-3 py-2 min-w-[11rem] w-[11rem] md:min-w-[18rem] md:w-[18rem] border-b border-gray-100")}>Produto / loja</th>
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Total</th>
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Sug.</th>
-                    {colunas.map((d) => (
-                      <th key={d} className={cn("font-extrabold px-1 py-2 border-b border-gray-100 border-l border-gray-50", celW)}>
+                    {colunas.map((d, i) => (
+                      <th key={d} className={cn("font-extrabold px-1 py-2 border-b border-gray-100", sepMes(i), celW)}>
                         <div className="text-gray-600">{d.slice(8, 10)}</div>
                         <div className="text-[9px]">{mesDe(d)}</div>
                       </th>
@@ -574,7 +589,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                         <td className={cn(stickyCls, "bg-gray-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest")}>{pk}</td>
                         <td colSpan={nCol - 1} className="bg-gray-50 px-2 py-1.5 text-[10px] font-bold text-gray-400">{n0(tot.porPack[pk]?.pecas || 0)} peças · {brl(tot.porPack[pk]?.valor || 0)}</td>
                       </tr>
-                      {ps.map((p) => {
+                      {ps.map((p, pi) => {
+                        const zebra = pi % 2 ? "bg-gray-50" : "bg-white";
                         const ls = linhas.filter((x) => x.produto.artigo === p.artigo);
                         const total = ls.reduce((a, x) => a + x.qtd, 0);
                         const sug = ls.reduce((a, x) => a + x.sugerido, 0);
@@ -586,8 +602,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                         const porData = somaPorData(ls);
                         return (
                           <React.Fragment key={p.artigo}>
-                            <tr className={cn("cursor-pointer", open ? "bg-blue-50/40" : "hover:bg-gray-50")} onClick={() => { setAberto(open ? null : p.artigo); setGradeAberta(null); }}>
-                              <td className={cn(stickyCls, open ? "bg-blue-50" : "bg-white", "px-3 py-2 border-b border-gray-100")}>
+                            <tr className={cn("cursor-pointer", open ? "bg-blue-50/60" : cn(zebra, "hover:bg-blue-50/30"))} onClick={() => { setAberto(open ? null : p.artigo); setGradeAberta(null); }}>
+                              <td className={cn(stickyCls, open ? "bg-blue-50" : zebra, "px-3 py-2 border-b border-gray-100 border-t-2 border-t-gray-200")}>
                                 <div className="flex items-center gap-2 min-w-0">
                                   <div className="hidden md:block shrink-0"><ProductImage material={p.artigo} imageMap={imageMap} size="sm" /></div>
                                   <div className="min-w-0">
@@ -601,15 +617,15 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-0.5 py-1 border-b border-gray-100" onClick={(e) => e.stopPropagation()}>
+                              <td className="px-0.5 py-1 border-b border-gray-100 border-t-2 border-t-gray-200" onClick={(e) => e.stopPropagation()}>
                                 <NumInput ariaLabel={`Total de ${p.artigo}`} value={total} disabled={travado} onCommit={(v) => setTotalProduto(p, ls, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
                               </td>
-                              <td className="text-center font-bold text-gray-400 border-b border-gray-100">{n0(sug)}</td>
-                              {colunas.map((d) => (
-                                <td key={d} className={cn("px-0.5 py-1 text-center border-b border-gray-100 border-l border-gray-50", !pode(d) && "bg-gray-50/60")} onClick={(e) => pode(d) && e.stopPropagation()}>
+                              <td className="text-center font-bold text-gray-400 border-b border-gray-100 border-t-2 border-t-gray-200">{n0(sug)}</td>
+                              {colunas.map((d, i) => (
+                                <td key={d} className={cn("px-0.5 py-1 text-center border-b border-gray-100 border-t-2 border-t-gray-200", sepMes(i), !pode(d) && "bg-gray-100/70")} onClick={(e) => pode(d) && e.stopPropagation()}>
                                   {pode(d) ? (
                                     <NumInput ariaLabel={`${p.artigo} entrega ${diaMes(d)}`} zeroVazio value={porData[d] || 0} disabled={travado} onCommit={(v) => setDataProduto(p, ls, d, v)}
-                                      className={cn("w-full h-8 text-center px-0 text-xs rounded-lg font-black bg-transparent hover:bg-gray-100 focus:bg-white", !porData[d] && "text-gray-300", d === ini && "text-blue-700")} />
+                                      className={cn("w-full h-8 text-center px-0 text-xs rounded-lg font-black", caixa(!porData[d]), d === ini && "text-blue-700")} />
                                   ) : <span className="text-gray-300 font-bold">–</span>}
                                 </td>
                               ))}
@@ -630,11 +646,11 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                     <NumInput ariaLabel={`Total de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
                                   </td>
                                   <td className="text-center font-bold text-gray-400 border-b border-gray-100">{n0(x.sugerido)}</td>
-                                  {colunas.map((d) => (
-                                    <td key={d} className={cn("px-0.5 py-1 text-center border-b border-gray-100 border-l border-gray-50", !pode(d) && "bg-gray-50")}>
+                                  {colunas.map((d, i) => (
+                                    <td key={d} className={cn("px-0.5 py-1 text-center border-b border-gray-100", sepMes(i), !pode(d) && "bg-gray-100/70")}>
                                       {pode(d) ? (
                                         <NumInput ariaLabel={`${x.loja.nome} entrega ${diaMes(d)}`} zeroVazio value={x.entregas[d] || 0} disabled={travado} onCommit={(v) => setTotalEntrega(p, x, d, v)}
-                                          className={cn("w-full h-8 text-center px-0 text-xs rounded-lg", !x.entregas[d] && "text-gray-300", d === ini && "text-blue-700")} />
+                                          className={cn("w-full h-8 text-center px-0 text-xs rounded-lg font-bold", caixa(!x.entregas[d]), d === ini && "text-blue-700")} />
                                       ) : <span className="text-gray-300 font-bold">–</span>}
                                     </td>
                                   ))}
@@ -654,13 +670,13 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                         <NumInput ariaLabel={`${x.loja.nome} total tamanho ${t}`} value={totT} disabled={travado} onCommit={(v) => setTamanhoTotal(p, x, t, v)} className={cn("w-full h-7 text-center px-0 text-[11px] rounded-md bg-gray-50 font-bold", !totT && "text-gray-300")} />
                                       </td>
                                       <td className={cn(ultima && "border-b border-gray-200")} />
-                                      {colunas.map((d) => {
+                                      {colunas.map((d, i) => {
                                         const q = Number(x.gradeEntregas[d]?.[t] || 0);
                                         return (
-                                          <td key={d} className={cn("px-0.5 py-0.5 text-center border-l border-gray-50", !pode(d) && "bg-gray-50", ultima && "border-b border-gray-200")}>
+                                          <td key={d} className={cn("px-0.5 py-0.5 text-center", sepMes(i), !pode(d) && "bg-gray-100/70", ultima && "border-b border-gray-200")}>
                                             {pode(d) ? (
                                               <NumInput ariaLabel={`${x.loja.nome} ${diaMes(d)} tamanho ${t}`} zeroVazio value={q} disabled={travado} onCommit={(v) => setCelula(p, x, d, t, v)}
-                                                className={cn("w-full h-7 text-center px-0 text-[11px] rounded-md bg-gray-50", !q && "text-gray-300")} />
+                                                className={cn("w-full h-7 text-center px-0 text-[11px] rounded-md", caixa(!q))} />
                                             ) : null}
                                           </td>
                                         );
@@ -688,7 +704,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
               </table>
             </div>
             <div className="text-[10px] text-gray-400 px-3 py-2 border-t border-gray-100">
-              Clique no produto para abrir as lojas; clique no nome da loja para abrir a grade (um tamanho por linha, embaixo de cada entrega). Azul = 1ª entrega (lançamento, ou 01/06). Depois a sugestão usa os dias 01 e 15 até 15/11; datas com 0 foram puladas para a grade não ficar pequena. – = antes do lançamento, não dá para comprar.
+              Clique no produto para abrir as lojas; clique no nome da loja para abrir a grade (um tamanho por linha, embaixo de cada entrega). As datas são as do site da adidas. Azul = 1ª entrega (lançamento, ou 01/06). Caixa tracejada = vazia, dá para digitar. – = antes do lançamento, não dá para comprar.
               Tudo é editável: mudar o total ou uma data do produto redistribui entre as lojas pelo % da sugestão.
             </div>
           </div>
@@ -726,8 +742,62 @@ function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
     (dados[0] as any[]).forEach((_: any, c: number) => { const ref = XLSX.utils.encode_cell({ r: 0, c }); if (ws[ref]) ws[ref].s = head; });
     XLSX.utils.book_append_sheet(wb, ws, nome);
   });
-  XLSX.writeFile(wb, `Pedido_FW27_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  salvarArquivo(`Pedido_FW27_conferencia_${new Date().toISOString().slice(0, 10)}.xlsx`, new Blob([buf])).catch(() => {});
 }
+
+/** Botão com confirmação no próprio botão (o navegador do protótipo não mostra janelas de confirmação). */
+const BotaoConfirmar: React.FC<{ rotulo: React.ReactNode; confirmar: string | null; onConfirm: () => void; className?: string }> = ({ rotulo, confirmar, onConfirm, className }) => {
+  const [armado, setArmado] = React.useState(false);
+  React.useEffect(() => { if (!armado) return; const t = setTimeout(() => setArmado(false), 4000); return () => clearTimeout(t); }, [armado]);
+  return (
+    <button
+      onClick={() => { if (!confirmar || armado) { setArmado(false); onConfirm(); } else setArmado(true); }}
+      className={cn(className, armado && "ring-2 ring-offset-2 ring-black")}
+    >
+      {armado ? confirmar : rotulo}
+    </button>
+  );
+};
+
+/** Exportar para o site da adidas: um arquivo por loja, no formato do carrinho. */
+const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[] }> = ({ pedido, linhas }) => {
+  const [msg, setMsg] = React.useState<Record<string, string>>({});
+  const baixar = async (l: Fw27Loja) => {
+    try {
+      const r = exportarLojaFornecedor(l, linhas);
+      const st = await salvarArquivo(r.nomeArquivo, r.blob);
+      const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs fora do carrinho do site não foram: ${r.foraDoCarrinho.map((f) => f.artigo).join(", ")}` : "";
+      setMsg((m) => ({ ...m, [l.id]: st === "salvo" ? `Baixado: ${n0(r.pecas)} peças${fora}` : "Download cancelado" }));
+    } catch (e: any) {
+      setMsg((m) => ({ ...m, [l.id]: "Não deu para gerar: " + (e?.message || e) }));
+    }
+  };
+  return (
+    <Card>
+      <h3 className="text-sm font-extrabold">Exportar para o site adidas</h3>
+      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Um arquivo por loja, no mesmo formato do carrinho baixado do site (abas Apparel e Hardware, coluna Qty preenchida).</p>
+      {pedido.lojas.map((l) => {
+        const sem = !String(l.codAdidas || "").trim();
+        const pc = linhas.filter((x) => x.loja.id === l.id).reduce((a, x) => a + (ARTIGOS_NO_CARRINHO.has(x.produto.artigo) ? x.qtd : 0), 0);
+        return (
+          <div key={l.id} className="flex items-center gap-2 py-2 border-t border-gray-50">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-extrabold truncate">{l.nome} <span className="text-gray-400 font-bold">· {sem ? "sem código adidas" : l.codAdidas}</span></div>
+              <div className="text-[10px] text-gray-500">{msg[l.id] || `${n0(pc)} peças de artigos do carrinho`}</div>
+            </div>
+            <button disabled={sem} onClick={() => baixar(l)} className="h-9 px-3 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 disabled:opacity-30">
+              <Download size={13} /> Baixar
+            </button>
+          </div>
+        );
+      })}
+      <p className="text-[10px] text-amber-700 mt-2">
+        O carrinho do site tem {ARTIGOS_NO_CARRINHO.size} artigos; {PRODUTOS.filter((p) => !ARTIGOS_NO_CARRINHO.has(p.artigo)).length} da AMD ainda não estão nele e não vão no arquivo. Para incluí-los, mande um carrinho com todos os artigos.
+      </p>
+    </Card>
+  );
+};
 
 const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; linhas: Fw27Linha[]; tot: ReturnType<typeof totais> }> = ({ pedido, atualizar, linhas, tot }) => {
   const [loja, setLoja] = React.useState("TODAS");
@@ -785,21 +855,31 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
           );
         })}
       </Card>
+      <ExportarCard pedido={pedido} linhas={linhas} />
       <div className="grid md:grid-cols-2 gap-2">
-        <button onClick={() => exportarExcel(pedido, linhas)} className="h-12 rounded-2xl bg-black text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
-          <Download size={16} /> Exportar Excel
-        </button>
+        <BotaoConfirmar
+          rotulo={<><Download size={16} /> Excel de conferência</>}
+          confirmar={null}
+          onConfirm={() => exportarExcel(pedido, linhas)}
+          className="h-12 rounded-2xl bg-white border border-gray-200 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2"
+        />
         {travado ? (
-          <button onClick={() => window.confirm("Reabrir o pedido para edição?") && atualizar((p) => ({ ...p, status: "rascunho" }))} className="h-12 rounded-2xl bg-white border border-gray-200 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
-            <Unlock size={16} /> Reabrir pedido
-          </button>
+          <BotaoConfirmar
+            rotulo={<><Unlock size={16} /> Reabrir pedido</>}
+            confirmar="Toque de novo para reabrir"
+            onConfirm={() => atualizar((p) => ({ ...p, status: "rascunho" }))}
+            className="h-12 rounded-2xl bg-white border border-gray-200 text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2"
+          />
         ) : (
-          <button onClick={() => window.confirm("Fechar o pedido? Ele fica travado até ser reaberto.") && atualizar((p) => ({ ...p, status: "enviado", enviadoEm: new Date().toISOString() }))} className="h-12 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2">
-            <Lock size={16} /> Fechar pedido
-          </button>
+          <BotaoConfirmar
+            rotulo={<><Lock size={16} /> Fechar pedido</>}
+            confirmar="Toque de novo para fechar"
+            onConfirm={() => atualizar((p) => ({ ...p, status: "enviado", enviadoEm: new Date().toISOString() }))}
+            className="h-12 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2"
+          />
         )}
       </div>
-      <p className="text-[10px] text-gray-400 px-2">O Excel sai num formato simples (loja, artigo, tamanho, quantidade). Troco pelo modelo de importação do fornecedor quando você me mandar.</p>
+      <p className="text-[10px] text-gray-400 px-2">Fechar trava o pedido para edição (só o master reabre). O Excel de conferência traz loja, artigo, entrega, tamanho e quantidade, para conferir antes de subir no site.</p>
     </div>
   );
 };

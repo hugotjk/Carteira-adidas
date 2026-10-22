@@ -13,6 +13,7 @@
  */
 import amd from "../data/fw27Amd.json";
 import subgruposPorArtigo from "../data/fw27Subgrupos.json";
+import fornecedor from "../data/fw27Fornecedor.json";
 
 export interface Fw27Produto {
   artigo: string;
@@ -34,6 +35,8 @@ export interface Fw27Loja {
   id: string;
   nome: string;
   verba: number; // R$ a preço PDV
+  /** Código adidas da loja (Sold To / Número do Destinatário no site). */
+  codAdidas?: string;
 }
 
 export type Fw27Status = "rascunho" | "enviado";
@@ -238,8 +241,10 @@ export const diaMes = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}/
 // ============================ ENTREGAS ============================
 //
 // Regras (Hugo, 22/10/2026):
-// - A 1ª entrega é sempre no lançamento.
-// - Depois, só nos dias 01 e 15 de cada mês, até 15/11.
+// - As datas possíveis são as do site da adidas (carrinho do fornecedor): 01/06, 15/06, 01/07, 13/07, 30/07, …, 16/11.
+// - A 1ª entrega é sempre no lançamento (ou 01/06, se lançar antes; não existe compra em maio).
+// - Depois, a sugestão usa as datas "do meio e do começo" de cada mês (no máx. 2 por mês);
+//   as datas que só existem por causa de outro lançamento (30/07, 06/08) ficam livres para digitar.
 // - Cada entrega cobre as vendas até a próxima; o peso vem da curva de compra por mês.
 // - O lançamento leva um peso extra (abastecer a loja).
 // - Entrega com menos peças que o nº de tamanhos é pulada e as peças vão para a entrega anterior,
@@ -248,16 +253,21 @@ export const diaMes = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}/
 export const MESES_CURVA = ["06", "07", "08", "09", "10", "11"];
 /** Não existe compra antes de junho: produto que lança antes começa a comprar em 01/06. */
 const PRIMEIRO_DIA_COMPRA = "-06-01";
-const ULTIMO_DIA_COMPRA = "-11-15";
+/** Datas de entrega aceitas pelo site da adidas, em ordem. */
+export const DATAS_FORNECEDOR: string[] = (fornecedor as { datas: string[] }).datas.slice().sort();
+const ULTIMA_DATA = DATAS_FORNECEDOR[DATAS_FORNECEDOR.length - 1] || "";
+/** Data "regular" do calendário: começo (dia ≤ 2) ou meio do mês (dia 13 a 19). */
+const dataRegular = (d: string) => { const dia = Number(d.slice(8, 10)); return dia <= 2 || (dia >= 13 && dia <= 19); };
 
-/** Primeira data em que dá para comprar o produto (lançamento, ou 01/06 se lançar antes). */
+/** Primeira data em que dá para comprar o produto: a 1ª data do site a partir do lançamento (nunca antes de 01/06). */
 export function inicioCompra(p: Fw27Produto): string {
   const min = p.lancamento.slice(0, 4) + PRIMEIRO_DIA_COMPRA;
-  return p.lancamento < min ? min : p.lancamento;
+  const base = p.lancamento < min ? min : p.lancamento;
+  return DATAS_FORNECEDOR.find((d) => d >= base) || base;
 }
-/** Pode comprar nesta data? Só bloqueia antes do lançamento (e fora de jun–15/nov). */
+/** Pode comprar nesta data? Só bloqueia antes do lançamento. */
 export function podeComprar(p: Fw27Produto, data: string): boolean {
-  return data >= inicioCompra(p) && data <= p.lancamento.slice(0, 4) + ULTIMO_DIA_COMPRA;
+  return data >= inicioCompra(p) && data <= ULTIMA_DATA;
 }
 const DIAS_MIN_ENTRE_ENTREGAS = 7;
 const PESO_EXTRA_LANCAMENTO = 1.5;
@@ -276,20 +286,16 @@ export function curvaDe(pedido: Fw27Pedido): Record<string, number> {
   return out;
 }
 
-/** Datas de entrega de um produto: lançamento, depois 01 e 15 até 15/11. */
+/** Datas de entrega sugeridas: a 1ª data a partir do lançamento, depois as datas regulares do site. */
 export function datasEntrega(p: Fw27Produto): string[] {
-  const ano = Number(p.lancamento.slice(0, 4));
-  const limite = [`${ano}${ULTIMO_DIA_COMPRA}`, p.fim].filter(Boolean).sort()[0];
+  const limite = [ULTIMA_DATA, p.fim].filter(Boolean).sort()[0];
   const inicio = inicioCompra(p);
   const out = [inicio];
-  for (let m = Number(inicio.slice(5, 7)); m <= 11; m++) {
-    for (const d of ["01", "15"]) {
-      const dt = `${ano}-${String(m).padStart(2, "0")}-${d}`;
-      if (dt <= inicio || dt > limite) continue;
-      if (diasEntre(out[out.length - 1], dt) < DIAS_MIN_ENTRE_ENTREGAS) continue;
-      out.push(dt);
-    }
-  }
+  DATAS_FORNECEDOR.forEach((dt) => {
+    if (dt <= inicio || dt > limite || !dataRegular(dt)) return;
+    if (diasEntre(out[out.length - 1], dt) < DIAS_MIN_ENTRE_ENTREGAS) return;
+    out.push(dt);
+  });
   return out;
 }
 
