@@ -402,11 +402,21 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
 
 /** Puxa as lojas da base de vendas (com gestor e código) e divide a verba pelo peso nas vendas. */
 const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"] }> = ({ pedido, atualizar }) => {
-  const gestores = React.useMemo(() => Array.from(new Set(VENDAS.lojas.map((l) => l.gestor).filter(Boolean))).sort(), []);
+  // Mesmo acesso do resto do app: master/ALL vê todas; GESTOR vê as lojas dos seus gestores; LOJA só as suas lojas.
+  const { user, userProfile } = useAuth();
+  const visiveis = React.useMemo(() => {
+    const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
+    if (tudo) return VENDAS.lojas;
+    const v = new Set(((userProfile?.accessValues as string[]) || []).map((x) => String(x).toUpperCase().trim()));
+    if (userProfile?.accessType === "GESTOR") return VENDAS.lojas.filter((l) => v.has(l.gestor.toUpperCase()));
+    if (userProfile?.accessType === "LOJA") { const ns = new Set(Array.from(v).map(nomeBase)); return VENDAS.lojas.filter((l) => ns.has(l.nome)); }
+    return [];
+  }, [user?.email, userProfile]);
+  const gestores = React.useMemo(() => Array.from(new Set(visiveis.map((l) => l.gestor).filter(Boolean))).sort(), [visiveis]);
   const [gestor, setGestor] = React.useState("TODOS");
   const [verba, setVerba] = React.useState(0);
   const noPedido = new Set(pedido.lojas.map((l) => nomeBase(l.nome)));
-  const faltam = VENDAS.lojas.filter((l) => (gestor === "TODOS" || l.gestor === gestor) && !noPedido.has(l.nome));
+  const faltam = visiveis.filter((l) => (gestor === "TODOS" || l.gestor === gestor) && !noPedido.has(l.nome));
   const adicionar = () => atualizar((p) => ({
     ...p,
     lojas: [...p.lojas, ...faltam.map((b) => ({ id: novoId(), nome: b.nome, verba: 0, gestor: b.gestor, codAdidas: b.codAdidas }))],
@@ -427,7 +437,7 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
     <Card className="px-4 py-3 space-y-3">
       <div>
         <h3 className="text-sm font-extrabold">Lojas da base de vendas</h3>
-        <p className="text-[10px] text-gray-400 mt-0.5">{VENDAS.lojas.length} lojas com gestor e código adidas. O % de cada uma é o peso nas vendas (R$) de jun–out/2026.</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{visiveis.length} lojas do seu acesso, com gestor e código adidas. O % de cada uma é o peso nas vendas (R$) de jun–out/2026.</p>
       </div>
       <div className="flex gap-2">
         <select aria-label="Gestor" value={gestor} onChange={(e) => setGestor(e.target.value)}
