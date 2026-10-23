@@ -405,7 +405,7 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
   // Mesmo acesso do resto do app: master/ALL vê todas; GESTOR vê as lojas dos seus gestores; LOJA só as suas lojas.
   const { user, userProfile } = useAuth();
   const visiveis = React.useMemo(() => {
-    const tudo = userProfile?.role === "master" || userProfile?.role === "admin" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
+    const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
     if (tudo) return VENDAS.lojas;
     const v = new Set(((userProfile?.accessValues as string[]) || []).map((x) => String(x).toUpperCase().trim()));
     if (userProfile?.accessType === "GESTOR") return VENDAS.lojas.filter((l) => v.has(l.gestor.toUpperCase()));
@@ -874,7 +874,7 @@ const HistoricoCard: React.FC<{ versao: number }> = ({ versao }) => {
   React.useEffect(() => {
     let vivo = true;
     // Mesmo filtro de acesso do login (cadastrado no Banco): master/ALL vê tudo.
-    const tudo = userProfile?.role === "master" || userProfile?.role === "admin" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
+    const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
     listarRegistros({ uid: user?.uid, tudo, tipo: userProfile?.accessType, valores: userProfile?.accessValues }).then((r) => vivo && setRegs(r));
     return () => { vivo = false; };
   }, [versao, user?.uid, userProfile]);
