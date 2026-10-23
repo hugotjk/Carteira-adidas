@@ -68,7 +68,7 @@ export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).
 }));
 
 /** Ordem de exibição dos subgrupos; os que não estiverem aqui vão no fim. */
-const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
+const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
 
 export const SUBGRUPOS: string[] = (() => {
   const out: string[] = [];

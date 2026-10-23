@@ -64,7 +64,7 @@ for _, r in lista.iterrows():
 lojas.sort(key=lambda x: -x["pct"])
 
 # ---------- subgrupos (referência) ----------
-SUBS = ["HOME", "AWAY", "THIRD", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"]
+SUBS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"]
 sg = v26.groupby("SUBGRUPO").VENDA.sum()
 sgTot = sum(float(sg.get(s, 0)) for s in SUBS)
 subgrupos = {s: round(float(sg.get(s, 0)) / sgTot * 100, 2) for s in SUBS}
