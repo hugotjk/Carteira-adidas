@@ -45,7 +45,6 @@ function somaPorMes(porData: Record<string, number>): { mes: string; q: number; 
 const novoId = () => "L" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const tagDe = (p: Fw27Produto) =>
   p.carryOver === "CARRY OVER" ? { label: "CARRY OVER", cls: "bg-blue-50 text-blue-700" }
-  : p.carryOver === "NEW COLOR" ? { label: "NOVA COR", cls: "bg-violet-50 text-violet-700" }
   : { label: "NOVO", cls: "bg-emerald-50 text-emerald-700" };
 
 /** Campo numérico que só grava ao sair do campo ou apertar Enter. */
@@ -138,8 +137,8 @@ const Fw27Master: React.FC = () => {
         {erro && <p className="text-[10px] text-amber-700 mt-3">{erro}</p>}
       </div>
 
-      <div className="p-4 md:p-6 space-y-4 max-w-5xl w-full mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className={cn("p-4 md:p-6 space-y-4 w-full mx-auto", active === "sugestao" ? "max-w-[112rem]" : "max-w-5xl")}>
+        <div className={cn("grid grid-cols-2 md:grid-cols-4 gap-2", active === "sugestao" && "max-w-5xl mx-auto")}>
           {SECTIONS.map((s) => (
             <button
               key={s.id} onClick={() => setActive(s.id)}
@@ -184,9 +183,9 @@ const SemLojas: React.FC<{ onIr: () => void }> = ({ onIr }) => (
 // ============================ RESUMOS FW27 ============================
 
 const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais> }> = ({ linhas, tot }) => {
-  const novos = PRODUTOS.filter((p) => p.carryOver === "TOTALLY NEW").length;
+  // CARRY OVER = já comprado no SS27; o resto (TOTALLY NEW e NEW COLOR da AMD) é novo.
   const co = PRODUTOS.filter((p) => p.carryOver === "CARRY OVER").length;
-  const nc = PRODUTOS.length - novos - co;
+  const novos = PRODUTOS.length - co;
   const porEntrega = LANCAMENTOS.map((d) => {
     const ps = PRODUTOS.filter((p) => p.lancamento === d);
     const ls = linhas.filter((x) => x.produto.lancamento === d);
@@ -199,7 +198,7 @@ const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais>
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over · ${nc} nova cor`} />
+        <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over (SS27)`} />
         <Kpi label="Peças no pedido" value={n0(tot.pecas)} />
         <Kpi label="Valor a PDV" value={brl(tot.valor)} sub={tot.verba ? `verba ${brl(tot.verba)}` : "sem verba ainda"} />
         <Kpi label="Datas de entrega" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(datasComPeca[0])} a ${diaMes(datasComPeca[datasComPeca.length - 1])}` : "lançamento, 01 e 15"} />
@@ -393,7 +392,9 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
       <CurvaCard pedido={pedido} atualizar={atualizar} travado={travado} />
 
       <p className="text-[10px] text-gray-400 px-2">
-        Padrão: proporcional ao número de referências de cada subgrupo. "vendas 2026" é quanto cada subgrupo vendeu em jun–out/2026 (SPECIAL e TIROTECH são novos, não têm venda): serve de referência para ajustar.
+        Padrão: cada produto da AMD comparado com o equivalente vendido em 2026 (masc com masc, fem com fem, inf com inf; com e sem Betano juntas).
+        TIROTECH = Tiro Travel; ICON = Icon 2025 no lançamento; SPECIAL = camisa WC Brasil depois da Copa; FANSHIRT = camisa torcedor de cada kit × peso do Fanshirt na Home em 2026.
+        Dentro do subgrupo, cada produto recebe a verba pelo peso do seu comparável (a Pro recebe menos que a torcedor).
         Padrão atual: {SUBGRUPOS.slice(0, 3).map((pk) => `${pk} ${pct1(subgruposPadrao()[pk])}`).join(", ")}…
       </p>
     </div>
@@ -637,7 +638,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
         return (
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="text-[11px] border-separate" style={{ borderSpacing: 0 }}>
+              <table className="text-[11px] border-separate w-full" style={{ borderSpacing: 0 }}>
                 <thead>
                   <tr className="text-[10px] text-gray-400">
                     <th className={cn(stickyCls, "bg-white text-left font-extrabold px-3 py-2 min-w-[11rem] w-[11rem] md:min-w-[18rem] md:w-[18rem] border-b border-gray-100")}>Produto / loja</th>

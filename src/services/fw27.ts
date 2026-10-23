@@ -14,6 +14,7 @@
 import amd from "../data/fw27Amd.json";
 import subgruposPorArtigo from "../data/fw27Subgrupos.json";
 import vendasPdv from "../data/fw27Vendas.json";
+import comparaveis from "../data/fw27Comparaveis.json";
 import { lojaCanonica } from "./fw27Lojas";
 
 export interface Fw27Produto {
@@ -68,7 +69,7 @@ export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).
 }));
 
 /** Ordem de exibição dos subgrupos; os que não estiverem aqui vão no fim. */
-const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
+const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
 
 export const SUBGRUPOS: string[] = (() => {
   const out: string[] = [];
@@ -83,12 +84,36 @@ export function pedidoVazio(): Fw27Pedido {
 
 export const chaveItem = (artigo: string, lojaId: string) => `${artigo}|${lojaId}`;
 
-/** % padrão de cada subgrupo: proporcional a quantas referências ele tem na AMD. */
+/**
+ * Comparáveis (scripts/comparaveis-para-json.py): cada produto da AMD × o equivalente vendido em 2026
+ * (masc × masc, fem × fem, inf × inf). Dá o % padrão de cada subgrupo e o peso de cada produto dentro dele.
+ */
+const COMP = comparaveis as { fonte: string; subgrupos: Record<string, number>; produtos: Record<string, number> };
+
+/** % padrão de cada subgrupo: pelos comparáveis; subgrupo sem comparável, pelo nº de referências. */
 export function subgruposPadrao(): Record<string, number> {
   const out: Record<string, number> = {};
   const total = PRODUTOS.length || 1;
-  SUBGRUPOS.forEach((sg) => { out[sg] = (PRODUTOS.filter((p) => p.subgrupo === sg).length / total) * 100; });
+  const porRefs = (sg: string) => (PRODUTOS.filter((p) => p.subgrupo === sg).length / total) * 100;
+  const comComp = SUBGRUPOS.filter((sg) => Number(COMP.subgrupos?.[sg]) > 0);
+  if (!comComp.length) { SUBGRUPOS.forEach((sg) => { out[sg] = porRefs(sg); }); return out; }
+  // Subgrupo novo sem comparável entra pelo nº de refs; o resto divide o que sobra pelos comparáveis.
+  const semComp = SUBGRUPOS.filter((sg) => !comComp.includes(sg));
+  const reservado = semComp.reduce((a, sg) => a + porRefs(sg), 0);
+  const somaComp = comComp.reduce((a, sg) => a + Number(COMP.subgrupos[sg]), 0);
+  semComp.forEach((sg) => { out[sg] = porRefs(sg); });
+  comComp.forEach((sg) => { out[sg] = (Number(COMP.subgrupos[sg]) / somaComp) * (100 - reservado); });
   return out;
+}
+
+/** Peso do produto dentro do subgrupo (soma 1). Produto sem comparável recebe a média dos outros. */
+export function pesoNoSubgrupo(p: Fw27Produto): number {
+  const ps = PRODUTOS.filter((x) => x.subgrupo === p.subgrupo);
+  const conhecidos = ps.map((x) => Number(COMP.produtos?.[x.artigo]) || 0).filter((v) => v > 0);
+  if (!conhecidos.length) return 1 / (ps.length || 1);
+  const media = conhecidos.reduce((a, b) => a + b, 0) / conhecidos.length;
+  const peso = (x: Fw27Produto) => Number(COMP.produtos?.[x.artigo]) || media;
+  return peso(p) / ps.reduce((a, x) => a + peso(x), 0);
 }
 
 /** % de cada subgrupo em uso (o salvo, ou o padrão quando ainda não foi definido). */
@@ -178,8 +203,7 @@ const somaGrade = (g: Record<string, number>) => Object.values(g).reduce((a, b) 
 
 /** Peças sugeridas (sem edição) de um produto numa loja. */
 export function sugeridoLoja(pedido: Fw27Pedido, p: Fw27Produto, loja: Fw27Loja, pct = pctSubgrupos(pedido)): number {
-  const nPack = PRODUTOS.filter((x) => x.subgrupo === p.subgrupo).length || 1;
-  const dinheiro = (Number(loja.verba || 0) * (pct[p.subgrupo] || 0)) / 100 / nPack;
+  const dinheiro = ((Number(loja.verba || 0) * (pct[p.subgrupo] || 0)) / 100) * pesoNoSubgrupo(p);
   return p.preco > 0 ? Math.round(dinheiro / p.preco) : 0;
 }
 
