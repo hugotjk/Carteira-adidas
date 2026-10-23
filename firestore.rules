@@ -71,19 +71,19 @@ service cloud.firestore {
       );
     }
 
-    // Sugestão FW27: um pedido por login. Por enquanto só o master lê e grava.
+    // Sugestão FW27: um pedido por login. Por enquanto só master e admins (cada um no seu documento).
     // Quando liberar para os franqueados: allow read, write: if isMaster() || (isAuthenticated() && request.auth.uid == userId);
     match /fw27Pedidos/{userId} {
-      allow read, write: if isMaster();
+      allow read, write: if isMaster() || (isAdmin() && request.auth.uid == userId);
     }
 
-    // Histórico FW27: cópia de cada exportação/fechamento. Por enquanto só o master grava e lê.
+    // Histórico FW27: cópia de cada exportação/fechamento. Por enquanto só master e admins gravam e leem.
     // Quando liberar para os gestores: create se request.resource.data.porUid == request.auth.uid;
     // read se isMaster() || resource.data.porUid == request.auth.uid
     //   || resource.data.gestores.hasAny(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessValues)
     match /fw27Historico/{registroId} {
-      allow create: if isMaster();
-      allow read: if isMaster();
+      allow create: if isMaster() || (isAdmin() && request.resource.data.porUid == request.auth.uid);
+      allow read: if isAdmin();
     }
 
     match /orders/{orderId} {
