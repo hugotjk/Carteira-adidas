@@ -393,7 +393,9 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
       <CurvaCard pedido={pedido} atualizar={atualizar} travado={travado} />
 
       <p className="text-[10px] text-gray-400 px-2">
-        Padrão: proporcional ao número de referências de cada subgrupo. "vendas 2026" é quanto cada subgrupo vendeu em jun–out/2026 (SPECIAL e TIROTECH são novos, não têm venda): serve de referência para ajustar.
+        Padrão: cada produto da AMD comparado com o equivalente vendido em 2026 (masc com masc, fem com fem, inf com inf; com e sem Betano juntas).
+        TIROTECH = Tiro Travel; ICON = Icon 2025 no lançamento; SPECIAL = camisa WC Brasil depois da Copa; FANSHIRT = camisa torcedor de cada kit × peso do Fanshirt na Home em 2026.
+        Dentro do subgrupo, cada produto recebe a verba pelo peso do seu comparável (a Pro recebe menos que a torcedor).
         Padrão atual: {SUBGRUPOS.slice(0, 3).map((pk) => `${pk} ${pct1(subgruposPadrao()[pk])}`).join(", ")}…
       </p>
     </div>
