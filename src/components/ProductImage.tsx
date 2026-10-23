@@ -1,5 +1,6 @@
 import React from "react";
 import { cn } from "../lib/utils";
+import semFoto from "../assets/sem-foto.webp";
 
 /**
  * Foto do material, buscada nos repositórios de imagens do GitHub.
@@ -58,8 +59,8 @@ const ProductImage = React.memo(({ material, imageMap, size = "sm" }: ProductIma
 
   if (!imageUrl) {
     return (
-      <div className={cn(s.box, "bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200 flex-shrink-0")}>
-        <span className={cn(s.text, "font-black text-gray-400 uppercase text-center leading-tight")}>SEM<br/>FOTO</span>
+      <div className={cn(s.box, "bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center border border-gray-200 flex-shrink-0")} title="Sem foto">
+        <img src={semFoto} alt="Sem foto" className="w-full h-full object-contain" />
       </div>
     );
   }

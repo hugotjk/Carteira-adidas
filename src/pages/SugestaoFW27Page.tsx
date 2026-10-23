@@ -3,7 +3,7 @@ import { Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Wrench } from "l
 import { cn } from "../lib/utils";
 import { useAuth } from "../context/AuthContext";
 
-// Só o master carrega a tela de verdade; os outros logins nem baixam esse código.
+// Só master e admins carregam a tela de verdade; os outros logins nem baixam esse código.
 const Fw27Master = React.lazy(() => import("../components/fw27/Fw27Master"));
 const MASTER_EMAIL = "hugotjk2@gmail.com";
 
@@ -18,13 +18,13 @@ type SectionId = (typeof SECTIONS)[number]["id"];
 
 /**
  * Tela "Sugestão FW27".
- * - Master: tela completa (em preparação, até sair a versão oficial).
+ * - Master e admins: tela completa (em preparação, até sair a versão oficial).
  * - Demais logins: "Em manutenção".
  */
 const SugestaoFW27Page: React.FC = () => {
   const { user, userProfile } = useAuth();
-  const isMaster = userProfile?.role === "master" || user?.email === MASTER_EMAIL;
-  if (isMaster) {
+  const podeVer = userProfile?.role === "master" || userProfile?.role === "admin" || user?.email === MASTER_EMAIL;
+  if (podeVer) {
     return (
       <React.Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
         <Fw27Master />

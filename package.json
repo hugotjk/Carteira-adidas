@@ -17,6 +17,7 @@
     "clsx": "^2.1.1",
     "compression": "^1.8.2",
     "express": "^4.21.2",
+    "fflate": "^0.8.2",
     "firebase": "^12.11.0",
     "framer-motion": "^12.38.0",
     "idb-keyval": "^6.2.2",
