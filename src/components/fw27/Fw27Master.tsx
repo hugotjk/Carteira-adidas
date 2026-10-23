@@ -45,7 +45,6 @@ function somaPorMes(porData: Record<string, number>): { mes: string; q: number; 
 const novoId = () => "L" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const tagDe = (p: Fw27Produto) =>
   p.carryOver === "CARRY OVER" ? { label: "CARRY OVER", cls: "bg-blue-50 text-blue-700" }
-  : p.carryOver === "NEW COLOR" ? { label: "NOVA COR", cls: "bg-violet-50 text-violet-700" }
   : { label: "NOVO", cls: "bg-emerald-50 text-emerald-700" };
 
 /** Campo numérico que só grava ao sair do campo ou apertar Enter. */
@@ -184,9 +183,9 @@ const SemLojas: React.FC<{ onIr: () => void }> = ({ onIr }) => (
 // ============================ RESUMOS FW27 ============================
 
 const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais> }> = ({ linhas, tot }) => {
-  const novos = PRODUTOS.filter((p) => p.carryOver === "TOTALLY NEW").length;
+  // CARRY OVER = já comprado no SS27; o resto (TOTALLY NEW e NEW COLOR da AMD) é novo.
   const co = PRODUTOS.filter((p) => p.carryOver === "CARRY OVER").length;
-  const nc = PRODUTOS.length - novos - co;
+  const novos = PRODUTOS.length - co;
   const porEntrega = LANCAMENTOS.map((d) => {
     const ps = PRODUTOS.filter((p) => p.lancamento === d);
     const ls = linhas.filter((x) => x.produto.lancamento === d);
@@ -199,7 +198,7 @@ const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais>
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over · ${nc} nova cor`} />
+        <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over (SS27)`} />
         <Kpi label="Peças no pedido" value={n0(tot.pecas)} />
         <Kpi label="Valor a PDV" value={brl(tot.valor)} sub={tot.verba ? `verba ${brl(tot.verba)}` : "sem verba ainda"} />
         <Kpi label="Datas de entrega" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(datasComPeca[0])} a ${diaMes(datasComPeca[datasComPeca.length - 1])}` : "lançamento, 01 e 15"} />
