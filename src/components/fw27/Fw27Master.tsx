@@ -138,8 +138,8 @@ const Fw27Master: React.FC = () => {
         {erro && <p className="text-[10px] text-amber-700 mt-3">{erro}</p>}
       </div>
 
-      <div className="p-4 md:p-6 space-y-4 max-w-5xl w-full mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div className={cn("p-4 md:p-6 space-y-4 w-full mx-auto", active === "sugestao" ? "max-w-[112rem]" : "max-w-5xl")}>
+        <div className={cn("grid grid-cols-2 md:grid-cols-4 gap-2", active === "sugestao" && "max-w-5xl mx-auto")}>
           {SECTIONS.map((s) => (
             <button
               key={s.id} onClick={() => setActive(s.id)}
@@ -637,7 +637,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
         return (
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="text-[11px] border-separate" style={{ borderSpacing: 0 }}>
+              <table className="text-[11px] border-separate w-full" style={{ borderSpacing: 0 }}>
                 <thead>
                   <tr className="text-[10px] text-gray-400">
                     <th className={cn(stickyCls, "bg-white text-left font-extrabold px-3 py-2 min-w-[11rem] w-[11rem] md:min-w-[18rem] md:w-[18rem] border-b border-gray-100")}>Produto / loja</th>
