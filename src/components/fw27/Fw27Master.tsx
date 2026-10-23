@@ -346,7 +346,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
           <div className="flex gap-2 py-3 border-t border-gray-100">
             <input
               value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addLoja()}
-              placeholder="Nome da loja (ex.: AERO FLA)" aria-label="Nome da nova loja"
+              placeholder="Nome da loja (ex.: LOJA 01)" aria-label="Nome da nova loja"
               className="flex-1 min-w-0 bg-gray-50 rounded-xl px-3 h-10 text-sm font-bold outline-none focus:ring-2 focus:ring-black/10 uppercase"
             />
             <button onClick={addLoja} className="h-10 px-3 rounded-xl bg-black text-white text-xs font-black flex items-center gap-1"><Plus size={14} /> Loja</button>
@@ -770,7 +770,7 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
       const r = exportarLojaFornecedor(l, linhas);
       const st = await salvarArquivo(r.nomeArquivo, r.blob);
       if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id], user?.uid)); onRegistro(); }
-      const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs fora do carrinho do site não foram: ${r.foraDoCarrinho.map((f) => f.artigo).join(", ")}` : "";
+      const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs não estão no carrinho do site` : "";
       setMsg((m) => ({ ...m, [l.id]: st === "salvo" ? `Baixado: ${n0(r.pecas)} peças${fora}` : "Download cancelado" }));
     } catch (e: any) {
       setMsg((m) => ({ ...m, [l.id]: "Não deu para gerar: " + (e?.message || e) }));
