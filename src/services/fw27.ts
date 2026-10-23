@@ -13,6 +13,8 @@
  */
 import amd from "../data/fw27Amd.json";
 import subgruposPorArtigo from "../data/fw27Subgrupos.json";
+import vendasPdv from "../data/fw27Vendas.json";
+import { lojaCanonica } from "./fw27Lojas";
 
 export interface Fw27Produto {
   artigo: string;
@@ -115,11 +117,37 @@ export function dividir(total: number, pesos: number[]): number[] {
   return out;
 }
 
-/**
- * Peso de cada tamanho. Até termos a grade vendida no PDV, usa mais peças no meio
- * da grade e menos nas pontas.
- */
-export function pesosGrade(p: Fw27Produto): number[] {
+// ---------------- Vendas do PDV (DBSleek) ----------------
+// src/data/fw27Vendas.json sai de scripts/vendas-para-json.py. Só percentuais, sem R$.
+
+export interface Fw27LojaBase { nome: string; gestor: string; codAdidas: string; pct: number }
+export const VENDAS = vendasPdv as {
+  fonte: string; geradoEm: string;
+  lojas: Fw27LojaBase[];
+  subgrupos: Record<string, number>;
+  curva: Record<string, number>;
+  grade: Record<string, Record<string, Record<string, number>>>;
+};
+
+/** GAVEA FLA e ADIDAS FLA são a mesma loja. */
+const JUNTAR_LOJA: Record<string, string> = { "ADIDAS FLA": "GAVEA FLA" };
+export const nomeBase = (nome: string) => { const c = lojaCanonica(nome); return JUNTAR_LOJA[c] || c; };
+const LOJA_BASE = new Map(VENDAS.lojas.map((l) => [l.nome, l]));
+/** A loja na base de vendas (gestor, código, % das vendas), pelo nome. */
+export const lojaNaBase = (nome: string) => LOJA_BASE.get(nomeBase(nome));
+
+/** Perfil de grade do produto: masculino, feminino, infantil, mini ou meião. */
+export function perfilGrade(p: Fw27Produto): string {
+  if (/MEI[AÃ]O/i.test(p.descricao)) return "MEIAO";
+  if (p.tamanhos.some((t) => ["1824", "2-3A", "3-4A", "4-5A", "6-7A"].includes(t))) return "MINI";
+  if (p.idade !== "ADULT" || p.tamanhos.some((t) => ["7-8A", "910A", "1112", "1314", "1516"].includes(t))) return "KIDS";
+  return p.genero === "FEMALE" ? "FEM" : "MASC";
+}
+/** Tamanho da AMD no nome usado nas vendas (SM → S, XXL → 2XL…). */
+const TAM_VENDA: Record<string, string> = { SM: "S", MD: "M", LG: "L", XXL: "2XL" };
+
+/** Peso de cada tamanho, no meio da grade mais e nas pontas menos (quando não há venda). */
+function pesosMeio(p: Fw27Produto): number[] {
   const n = p.tamanhos.length;
   return p.tamanhos.map((_, i) => {
     const d = Math.abs(i - (n - 1) / 2);
@@ -127,8 +155,20 @@ export function pesosGrade(p: Fw27Produto): number[] {
   });
 }
 
-export function gradeDe(p: Fw27Produto, total: number): Record<string, number> {
-  const qs = dividir(total, pesosGrade(p));
+/**
+ * Peso de cada tamanho: o que a loja vendeu nesse perfil (masc, fem, infantil…) em 2025–2026.
+ * Loja com pouca venda puxa para a grade geral; sem venda nenhuma, usa a grade geral.
+ */
+export function pesosGrade(p: Fw27Produto, lojaNome?: string): number[] {
+  const tab = VENDAS.grade[perfilGrade(p)];
+  const t = tab && ((lojaNome && tab[nomeBase(lojaNome)]) || tab._todas);
+  if (!t) return pesosMeio(p);
+  const pesos = p.tamanhos.map((x) => Number(t[TAM_VENDA[x] || x] || 0));
+  return pesos.some((x) => x > 0) ? pesos : pesosMeio(p);
+}
+
+export function gradeDe(p: Fw27Produto, total: number, lojaNome?: string): Record<string, number> {
+  const qs = dividir(total, pesosGrade(p, lojaNome));
   const out: Record<string, number> = {};
   p.tamanhos.forEach((t, i) => { out[t] = qs[i]; });
   return out;
@@ -165,7 +205,7 @@ export function calcular(pedido: Fw27Pedido): Fw27Linha[] {
     pedido.lojas.forEach((l) => {
       const sugerido = sugeridoLoja(pedido, p, l, pct);
       const editada = pedido.itens[chaveItem(p.artigo, l.id)];
-      const grade = editada ? { ...gradeDe(p, 0), ...editada } : gradeDe(p, sugerido);
+      const grade = editada ? { ...gradeDe(p, 0), ...editada } : gradeDe(p, sugerido, l.nome);
       const k = chaveItem(p.artigo, l.id);
       const matriz = pedido.gradeEntrega?.[k];
       if (matriz) {
@@ -282,12 +322,20 @@ const isoDe = (d: Date) => d.toISOString().slice(0, 10);
 const diasEntre = (a: string, b: string) => Math.round((dataUTC(b).getTime() - dataUTC(a).getTime()) / 86400000);
 const diasNoMes = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).getUTCDate();
 
-/** Peso de cada mês na curva de compra (padrão: todos iguais). */
+/** Curva padrão: vendas de 2026 (ano de Copa, parecido com 2027). Nov/2026 estimado. */
+export const curvaPadrao = (): Record<string, number> => {
+  const out: Record<string, number> = {};
+  const ok = MESES_CURVA.some((m) => Number(VENDAS.curva?.[m]) > 0);
+  MESES_CURVA.forEach((m) => { out[m] = ok ? Number(VENDAS.curva[m] || 0) : 100 / MESES_CURVA.length; });
+  return out;
+};
+
+/** Peso de cada mês na curva de compra (o salvo, ou o padrão das vendas de 2026). */
 export function curvaDe(pedido: Fw27Pedido): Record<string, number> {
   const salvo = pedido.curva || {};
   const out: Record<string, number> = {};
-  const temAlgum = MESES_CURVA.some((m) => salvo[m] !== undefined);
-  MESES_CURVA.forEach((m) => { out[m] = temAlgum ? Number(salvo[m] || 0) : 100 / MESES_CURVA.length; });
+  if (!MESES_CURVA.some((m) => salvo[m] !== undefined)) return curvaPadrao();
+  MESES_CURVA.forEach((m) => { out[m] = Number(salvo[m] || 0); });
   return out;
 }
 
@@ -397,9 +445,9 @@ export function gradePorEntrega(p: Fw27Produto, grade: Record<string, number>, e
 }
 
 /** Redistribui um total mantendo o formato de uma grade (editada ou não). */
-export function gradeProporcional(p: Fw27Produto, base: Record<string, number>, total: number): Record<string, number> {
+export function gradeProporcional(p: Fw27Produto, base: Record<string, number>, total: number, lojaNome?: string): Record<string, number> {
   const pesos = p.tamanhos.map((t) => Number(base[t] || 0));
-  if (!pesos.some((x) => x > 0)) return gradeDe(p, total);
+  if (!pesos.some((x) => x > 0)) return gradeDe(p, total, lojaNome);
   const qs = dividir(total, pesos);
   const out: Record<string, number> = {};
   p.tamanhos.forEach((t, i) => { out[t] = qs[i]; });

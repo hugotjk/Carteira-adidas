@@ -13,7 +13,7 @@ import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27
 import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
 import {
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes,
+  calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
@@ -275,7 +275,8 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
   const addLoja = () => {
     const nm = nome.trim().toUpperCase();
     if (!nm) return;
-    atualizar((p) => ({ ...p, lojas: [...p.lojas, { id: novoId(), nome: nm, verba: 0 }] }));
+    const b = lojaNaBase(nm);
+    atualizar((p) => ({ ...p, lojas: [...p.lojas, { id: novoId(), nome: b ? b.nome : nm, verba: 0, ...(b && { gestor: b.gestor, codAdidas: b.codAdidas }) }] }));
     setNome("");
   };
   const delLoja = (l: Fw27Loja) => {
@@ -314,6 +315,8 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
         <div className="text-[11px] text-gray-400 mt-1">Soma das verbas das lojas. No pedido: {brl(tot.valor)} ({tot.verba ? pct1((tot.valor / tot.verba) * 100) : "—"} da verba).</div>
       </Card>
 
+      {!travado && <BaseLojasCard pedido={pedido} atualizar={atualizar} />}
+
       <Card className="px-4 py-2">
         <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_7rem_2rem] gap-2 py-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
           <span>Loja</span><span className="text-center">%</span><span className="text-right">Verba R$</span><span />
@@ -323,14 +326,14 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
           return (
             <div key={l.id} className="grid grid-cols-[minmax(0,1fr)_4.5rem_7rem_2rem] gap-2 items-center py-2.5 border-t border-gray-50">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs font-extrabold truncate">{l.nome}</span>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                  <span className="text-xs font-extrabold truncate max-w-full">{l.nome}</span>
                   <input aria-label={`Código adidas da loja ${l.nome}`} disabled={travado} defaultValue={l.codAdidas || ""} placeholder="cód. adidas"
                     onBlur={(e) => { const v = e.target.value.replace(/\D/g, ""); if (v !== (l.codAdidas || "")) setLoja(l.id, { codAdidas: v }); }}
                     className="w-24 shrink-0 bg-gray-50 rounded-md px-1.5 h-6 text-[10px] font-bold text-gray-600 outline-none focus:ring-2 focus:ring-black/10" />
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 mt-0.5">
-                  No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
+                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>vendas {pct1(lojaNaBase(l.nome)!.pct)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
                 </div>
               </div>
               <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={t?.pctSugerido || 0} disabled={travado || !tot.verba} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
@@ -353,7 +356,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
           </div>
         )}
       </Card>
-      <p className="text-[10px] text-gray-400 px-2">Mudar o % de uma loja mantém a verba total e recalcula a verba dela. A lista de lojas e gestores vai ser carregada da planilha quando chegar.</p>
+      <p className="text-[10px] text-gray-400 px-2">Mudar o % de uma loja mantém a verba total e recalcula a verba dela. "vendas" é o peso da loja nas vendas de jun–out/2026.</p>
 
       <Card className="px-4 py-2">
         <div className="flex items-center justify-between py-2">
@@ -373,7 +376,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
             <div key={pk} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem] gap-2 items-center py-2 border-t border-gray-50">
               <div className="min-w-0">
                 <div className="text-[11px] font-extrabold uppercase truncate">{pk}</div>
-                <div className="text-[10px] font-semibold text-gray-400">{PRODUTOS.filter((p) => p.subgrupo === pk).length} refs · {brl((tot.verba * (pct[pk] || 0)) / 100)}</div>
+                <div className="text-[10px] font-semibold text-gray-400">{PRODUTOS.filter((p) => p.subgrupo === pk).length} refs · {brl((tot.verba * (pct[pk] || 0)) / 100)}{VENDAS.subgrupos[pk] !== undefined && <> · vendas 2026 {pct1(VENDAS.subgrupos[pk])}</>}</div>
               </div>
               <NumInput ariaLabel={`% do subgrupo ${pk}`} decimals={1} value={pct[pk] || 0} disabled={travado} onCommit={(v) => setPack(pk, v)} className="w-full" />
               <div className="text-right text-[10px] font-bold text-gray-500">
@@ -390,10 +393,65 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
       <CurvaCard pedido={pedido} atualizar={atualizar} travado={travado} />
 
       <p className="text-[10px] text-gray-400 px-2">
-        Padrão: proporcional ao número de referências de cada subgrupo. Quando as vendas do PDV chegarem, o padrão passa a ser o peso de cada subgrupo (comprador) nas vendas de jun–nov.
+        Padrão: proporcional ao número de referências de cada subgrupo. "vendas 2026" é quanto cada subgrupo vendeu em jun–out/2026 (SPECIAL e TIROTECH são novos, não têm venda): serve de referência para ajustar.
         Padrão atual: {SUBGRUPOS.slice(0, 3).map((pk) => `${pk} ${pct1(subgruposPadrao()[pk])}`).join(", ")}…
       </p>
     </div>
+  );
+};
+
+/** Puxa as lojas da base de vendas (com gestor e código) e divide a verba pelo peso nas vendas. */
+const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"] }> = ({ pedido, atualizar }) => {
+  const gestores = React.useMemo(() => Array.from(new Set(VENDAS.lojas.map((l) => l.gestor).filter(Boolean))).sort(), []);
+  const [gestor, setGestor] = React.useState("TODOS");
+  const [verba, setVerba] = React.useState(0);
+  const noPedido = new Set(pedido.lojas.map((l) => nomeBase(l.nome)));
+  const faltam = VENDAS.lojas.filter((l) => (gestor === "TODOS" || l.gestor === gestor) && !noPedido.has(l.nome));
+  const adicionar = () => atualizar((p) => ({
+    ...p,
+    lojas: [...p.lojas, ...faltam.map((b) => ({ id: novoId(), nome: b.nome, verba: 0, gestor: b.gestor, codAdidas: b.codAdidas }))],
+  }));
+  const comBase = pedido.lojas.filter((l) => lojaNaBase(l.nome));
+  const somaPct = comBase.reduce((a, l) => a + (lojaNaBase(l.nome)?.pct || 0), 0);
+  const distribuir = () => {
+    if (!verba || !somaPct) return;
+    atualizar((p) => {
+      const fora = p.lojas.filter((l) => !lojaNaBase(l.nome)).reduce((a, l) => a + Number(l.verba || 0), 0);
+      const resto = Math.max(0, verba - fora);
+      const pesos = p.lojas.map((l) => lojaNaBase(l.nome)?.pct || 0);
+      const qs = dividir(resto, pesos);
+      return { ...p, lojas: p.lojas.map((l, i) => (lojaNaBase(l.nome) ? { ...l, verba: qs[i] } : l)) };
+    });
+  };
+  return (
+    <Card className="px-4 py-3 space-y-3">
+      <div>
+        <h3 className="text-sm font-extrabold">Lojas da base de vendas</h3>
+        <p className="text-[10px] text-gray-400 mt-0.5">{VENDAS.lojas.length} lojas com gestor e código adidas. O % de cada uma é o peso nas vendas (R$) de jun–out/2026.</p>
+      </div>
+      <div className="flex gap-2">
+        <select aria-label="Gestor" value={gestor} onChange={(e) => setGestor(e.target.value)}
+          className="flex-1 min-w-0 bg-gray-50 rounded-xl px-2 h-10 text-xs font-bold outline-none focus:ring-2 focus:ring-black/10">
+          <option value="TODOS">Todos os gestores</option>
+          {gestores.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <button onClick={adicionar} disabled={!faltam.length}
+          className="h-10 px-3 rounded-xl bg-black text-white text-xs font-black flex items-center gap-1 disabled:bg-gray-200 disabled:text-gray-400 shrink-0">
+          <Plus size={14} /> {faltam.length ? `${faltam.length} loja${faltam.length > 1 ? "s" : ""}` : "Todas já estão"}
+        </button>
+      </div>
+      <div className="flex gap-2 items-center">
+        <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider shrink-0">Verba total R$</span>
+        <NumInput ariaLabel="Verba total para distribuir" value={verba} onCommit={setVerba} className="flex-1" zeroVazio />
+        <button onClick={distribuir} disabled={!verba || !somaPct}
+          className="h-9 px-3 rounded-xl bg-gray-900 text-white text-[11px] font-black disabled:bg-gray-200 disabled:text-gray-400 shrink-0">
+          Dividir pelas vendas
+        </button>
+      </div>
+      {comBase.length < pedido.lojas.length && (
+        <p className="text-[10px] text-amber-700">{pedido.lojas.length - comBase.length} loja(s) fora da base mantêm a verba digitada; o resto é dividido entre as {comBase.length} da base.</p>
+      )}
+    </Card>
   );
 };
 
@@ -426,7 +484,7 @@ const CurvaCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 pb-2">
         Cada entrega cobre as vendas até a próxima, pesadas por esta curva; o lançamento leva 50% a mais.
-        Padrão: meses iguais. Quando as vendas do PDV chegarem, o padrão passa a ser 2026 (ano de Copa, como 2027), e não 2025, que vendeu mais em jun/jul.
+        Padrão: peças vendidas por mês em 2026 (ano de Copa, como 2027). Outubro completado até o fim do mês; novembro estimado por out/2026 × (nov ÷ out de 2025).
       </p>
     </Card>
   );
@@ -450,7 +508,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       delete gradeEntrega[k];
       return { ...pd, itens: { ...pd.itens, [k]: grade }, entregas, gradeEntrega };
     });
-  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total));
+  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total, x.loja.nome));
   // Grade por entrega: mexeu numa célula, o resto (totais da loja, do tamanho e da entrega) acompanha.
   const salvarMatriz = (p: Fw27Produto, x: Fw27Linha, m: Record<string, Record<string, number>>) =>
     atualizar((pd) => ({ ...pd, gradeEntrega: { ...(pd.gradeEntrega || {}), [chaveItem(p.artigo, x.loja.id)]: m } }));
@@ -466,7 +524,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const m = copiaMatriz(x);
     const atual = m[d] || {};
     const base = p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade;
-    m[d] = gradeProporcional(p, base, Math.round(v));
+    m[d] = gradeProporcional(p, base, Math.round(v), x.loja.nome);
     salvarMatriz(p, x, m);
   };
   // Mudou o total de um tamanho na loja: espalha pelas entregas como esse tamanho já estava (ou como as entregas estão).
@@ -493,7 +551,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const qs = dividir(Math.round(v), pesosLojas(ls, (x) => x.sugerido));
     atualizar((pd) => {
       const itens = { ...pd.itens }; const entregas = { ...(pd.entregas || {}) }; const gradeEntrega = { ...(pd.gradeEntrega || {}) };
-      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i]); delete entregas[k]; delete gradeEntrega[k]; });
+      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i], x.loja.nome); delete entregas[k]; delete gradeEntrega[k]; });
       return { ...pd, itens, entregas, gradeEntrega };
     });
   };
@@ -505,7 +563,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       ls.forEach((x, i) => {
         const m = JSON.parse(JSON.stringify(x.gradeEntregas)) as Record<string, Record<string, number>>;
         const atual = m[d] || {};
-        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i]);
+        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i], x.loja.nome);
         gradeEntrega[chaveItem(p.artigo, x.loja.id)] = m;
       });
       return { ...pd, gradeEntrega };
