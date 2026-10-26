@@ -48,6 +48,42 @@ const tagDe = (p: Fw27Produto) =>
   p.carryOver === "CARRY OVER" ? { label: "CARRY OVER", cls: "bg-blue-50 text-blue-700" }
   : { label: "NOVO", cls: "bg-emerald-50 text-emerald-700" };
 
+type Direcao = "cima" | "baixo" | "esq" | "dir";
+const SETAS: Record<string, Direcao> = { ArrowUp: "cima", ArrowDown: "baixo", ArrowLeft: "esq", ArrowRight: "dir" };
+
+/** Coluna (contando colSpan) de cada célula de uma linha. */
+function colunasDaLinha(tr: HTMLTableRowElement): { td: HTMLTableCellElement; ini: number; fim: number }[] {
+  let c = 0;
+  return Array.from(tr.cells).map((td) => { const ini = c; c += td.colSpan || 1; return { td, ini, fim: c - 1 }; });
+}
+const campoDa = (td?: HTMLTableCellElement | null) => td?.querySelector<HTMLInputElement>("input:not([disabled])") || null;
+
+/** Vai para a célula editável vizinha (como no Excel). Devolve false se não houver para onde ir. */
+function navegar(el: HTMLInputElement, dir: Direcao): boolean {
+  const td = el.closest("td");
+  const tr = td?.parentElement as HTMLTableRowElement | null;
+  const tabela = el.closest("table");
+  if (!td || !tr || !tabela) return false;
+  const minha = colunasDaLinha(tr).find((x) => x.td === td);
+  if (!minha) return false;
+  let alvo: HTMLInputElement | null = null;
+  if (dir === "esq" || dir === "dir") {
+    const cels = colunasDaLinha(tr);
+    const i = cels.findIndex((x) => x.td === td);
+    for (let j = dir === "dir" ? i + 1 : i - 1; j >= 0 && j < cels.length && !alvo; j += dir === "dir" ? 1 : -1) alvo = campoDa(cels[j].td);
+  } else {
+    const linhas = Array.from(tabela.rows);
+    const i = linhas.indexOf(tr);
+    for (let j = dir === "baixo" ? i + 1 : i - 1; j >= 0 && j < linhas.length && !alvo; j += dir === "baixo" ? 1 : -1) {
+      const cel = colunasDaLinha(linhas[j]).find((x) => x.ini <= minha.ini && x.fim >= minha.ini);
+      alvo = campoDa(cel?.td);
+    }
+  }
+  if (!alvo) return false;
+  alvo.focus();
+  return true;
+}
+
 /** Campo numérico que só grava ao sair do campo ou apertar Enter. */
 const NumInput: React.FC<{
   value: number; onCommit: (v: number) => void; disabled?: boolean; className?: string; decimals?: number; ariaLabel: string; zeroVazio?: boolean;
@@ -65,7 +101,15 @@ const NumInput: React.FC<{
       inputMode="decimal" aria-label={ariaLabel} disabled={disabled} value={txt}
       onFocus={(e) => { setFoco(true); e.target.select(); }}
       onBlur={() => { setFoco(false); commit(); }}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      onKeyDown={(e) => {
+        const el = e.target as HTMLInputElement;
+        const dir = SETAS[e.key] || (e.key === "Enter" ? (e.shiftKey ? "cima" : "baixo") : null);
+        if (dir && el.closest("table")) {
+          // Na tabela, setas e Enter andam como no Excel (o valor grava ao sair da célula).
+          e.preventDefault();
+          if (!navegar(el, dir) && e.key === "Enter") el.blur();
+        } else if (e.key === "Enter") el.blur();
+      }}
       onChange={(e) => setTxt(e.target.value)}
       className={cn("bg-gray-50 rounded-xl px-2 h-9 text-right font-extrabold text-sm outline-none focus:ring-2 focus:ring-black/10 disabled:text-gray-400 min-w-0", className)}
     />
