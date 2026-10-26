@@ -14,7 +14,7 @@ import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27R
 import {
   aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido, AUMENTO_VERBA,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeVendida, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
+  PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
@@ -526,43 +526,30 @@ const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
   const [loja, setLoja] = React.useState("TODAS");
   const perfis = PERFIS_GRADE.filter((x) => (TAMANHOS_PERFIL[x.id] || []).length);
   const lojaSel = pedido.lojas.find((l) => l.id === loja);
-  // Em TODAS: média das lojas pesada pela verba (ou o que foi digitado para todas).
-  const tabela = (perfil: string): Record<string, number> => {
-    if (lojaSel) return gradeDaLoja(perfil, { pedido, loja: lojaSel });
-    if (pedido.grade?.[perfil]) return pedido.grade[perfil];
-    const tams = TAMANHOS_PERFIL[perfil] || [];
-    const out: Record<string, number> = {};
-    const somaV = pedido.lojas.reduce((a, l) => a + (Number(l.verba) || 0), 0);
-    tams.forEach((t) => { out[t] = 0; });
-    pedido.lojas.forEach((l) => {
-      const g = gradeDaLoja(perfil, { pedido, loja: l });
-      const w = somaV ? (Number(l.verba) || 0) / somaV : 1 / (pedido.lojas.length || 1);
-      tams.forEach((t) => { out[t] += (g[t] || 0) * w; });
-    });
-    if (!pedido.lojas.length) return gradeVendida(perfil);
-    return out;
-  };
-  const mexido = (perfil: string) => (lojaSel ? !!pedido.gradeLoja?.[lojaSel.id]?.[perfil] : !!pedido.grade?.[perfil] || Object.values(pedido.gradeLoja || {}).some((g) => g[perfil]));
+  const unica = gradeUnicaLigada(pedido);
+  const propria = !!lojaSel && !!pedido.gradePropria?.includes(lojaSel.id);
+  // O que dá para editar nesta visão: TODAS só com grade única; loja só se ela não segue a única.
+  const editavel = !travado && (lojaSel ? !segueGradeUnica(pedido, lojaSel.id) : unica);
+  const tabela = (perfil: string) => (lojaSel ? gradeDaLoja(perfil, { pedido, loja: lojaSel }) : gradeTodas(perfil, pedido));
+  const mexido = (perfil: string) => (lojaSel ? !!pedido.gradeLoja?.[lojaSel.id]?.[perfil] : !!pedido.grade?.[perfil]);
   const setTam = (perfil: string, t: string, v: number) => {
     const nova = { ...tabela(perfil), [t]: v };
-    atualizar((p) => {
-      if (lojaSel) return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: { ...(p.gradeLoja?.[lojaSel.id] || {}), [perfil]: nova } } };
-      // Para todas as lojas: vale para todas, apagando o que tinha sido mexido loja a loja.
-      const gl: NonNullable<Fw27Pedido["gradeLoja"]> = {};
-      Object.entries(p.gradeLoja || {}).forEach(([id, g]) => { const { [perfil]: _x, ...r } = g; if (Object.keys(r).length) gl[id] = r; });
-      return { ...p, grade: { ...(p.grade || {}), [perfil]: nova }, gradeLoja: gl };
-    });
+    atualizar((p) => (lojaSel
+      ? { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: { ...(p.gradeLoja?.[lojaSel.id] || {}), [perfil]: nova } } }
+      : { ...p, grade: { ...(p.grade || {}), [perfil]: nova } }));
   };
   const padrao = (perfil: string) => atualizar((p) => {
-    if (lojaSel) {
-      const { [perfil]: _x, ...r } = p.gradeLoja?.[lojaSel.id] || {};
-      return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: r } };
-    }
+    if (lojaSel) { const { [perfil]: _x, ...r } = p.gradeLoja?.[lojaSel.id] || {}; return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: r } }; }
     const { [perfil]: _g, ...grade } = p.grade || {};
-    const gl: NonNullable<Fw27Pedido["gradeLoja"]> = {};
-    Object.entries(p.gradeLoja || {}).forEach(([id, g]) => { const { [perfil]: _x, ...r } = g; if (Object.keys(r).length) gl[id] = r; });
-    return { ...p, grade, gradeLoja: gl };
+    return { ...p, grade };
   });
+  const setUnica = (v: boolean) => atualizar((p) => ({ ...p, gradeUnica: v }));
+  const setPropria = (v: boolean) => lojaSel && atualizar((p) => {
+    const l = new Set(p.gradePropria || []);
+    if (v) l.add(lojaSel.id); else l.delete(lojaSel.id);
+    return { ...p, gradePropria: Array.from(l) };
+  });
+  const nPropria = pedido.lojas.filter((l) => pedido.gradePropria?.includes(l.id)).length;
   return (
     <Card className="px-4 py-2">
       <div className="py-2">
@@ -570,10 +557,29 @@ const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
         <p className="text-[10px] text-gray-400 mt-0.5">% de cada tamanho. Padrão = o que cada loja vendeu em 2025–2026. Mudar aqui muda a grade de todos os produtos do perfil (menos os que você editou à mão).</p>
       </div>
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
-        {[{ id: "TODAS", nome: "TODAS AS LOJAS" }, ...pedido.lojas].map((l) => (
-          <button key={l.id} onClick={() => setLoja(l.id)} className={cn("shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border", loja === l.id ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>{l.nome}</button>
-        ))}
+        {[{ id: "TODAS", nome: "TODAS AS LOJAS" }, ...pedido.lojas].map((l) => {
+          const marca = l.id !== "TODAS" && unica && pedido.gradePropria?.includes(l.id);
+          return (
+            <button key={l.id} onClick={() => setLoja(l.id)} className={cn("shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border", loja === l.id ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>
+              {l.nome}{marca && <span className="ml-1 text-amber-500">●</span>}
+            </button>
+          );
+        })}
       </div>
+      {!travado && (
+        <label className="flex items-center gap-2 py-2 text-[11px] font-bold text-gray-700 cursor-pointer select-none">
+          {lojaSel ? (
+            unica && <><input type="checkbox" checked={propria} onChange={(e) => setPropria(e.target.checked)} className="accent-black" /> Esta loja usa grade própria (vendas dela), fora da grade única</>
+          ) : (
+            <><input type="checkbox" checked={unica} onChange={(e) => setUnica(e.target.checked)} className="accent-black" /> Mesma grade para todas as lojas{unica && nPropria > 0 && <span className="text-gray-400 font-semibold">(menos {nPropria} com grade própria ●)</span>}</>
+          )}
+        </label>
+      )}
+      {!editavel && !travado && (
+        <p className="text-[10px] text-gray-500 bg-gray-50 rounded-lg px-2 py-1.5 mb-1">
+          {lojaSel ? "Esta loja segue a grade de TODAS AS LOJAS. Marque “grade própria” para mexer só nela." : "Média das lojas (cada uma usa a própria grade). Marque “mesma grade para todas” para editar uma grade só, ou clique numa loja."}
+        </p>
+      )}
       {perfis.map(({ id, nome }) => {
         const tams = TAMANHOS_PERFIL[id] || [];
         const tab = tabela(id);
@@ -583,7 +589,7 @@ const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
           <div key={id} className="py-2 border-t border-gray-100">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-extrabold uppercase">{nome}{mexido(id) && <span className="ml-2 text-[8px] font-black rounded px-1 py-0.5 bg-amber-50 text-amber-700">EDIT.</span>}</span>
-              {!travado && mexido(id) && (
+              {editavel && mexido(id) && (
                 <button onClick={() => padrao(id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Padrão</button>
               )}
             </div>
@@ -591,13 +597,15 @@ const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
               {tams.map((t) => (
                 <div key={t} className="text-center">
                   <div className="text-[9px] font-extrabold text-gray-400 mb-0.5">{t}</div>
-                  <NumInput ariaLabel={`${nome} tamanho ${t}`} decimals={1} value={tab[t] || 0} disabled={travado} onCommit={(v) => setTam(id, t, v)} className="w-full text-center px-0 text-xs" />
+                  <NumInput ariaLabel={`${nome} tamanho ${t}`} decimals={1} value={tab[t] || 0} disabled={!editavel} onCommit={(v) => setTam(id, t, v)} className="w-full text-center px-0 text-xs" />
                 </div>
               ))}
             </div>
-            <div className={cn("flex justify-between pt-1.5 text-[10px] font-black", ok ? "text-emerald-700" : "text-amber-700")}>
-              <span>Soma</span><span>{ok ? "100% ✓" : `${pct1(soma)} (o app ajusta na proporção)`}</span>
-            </div>
+            {editavel && (
+              <div className={cn("flex justify-between pt-1.5 text-[10px] font-black", ok ? "text-emerald-700" : "text-amber-700")}>
+                <span>Soma</span><span>{ok ? "100% ✓" : `${pct1(soma)} (o app ajusta na proporção)`}</span>
+              </div>
+            )}
           </div>
         );
       })}

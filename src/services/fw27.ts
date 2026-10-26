@@ -59,7 +59,11 @@ export interface Fw27Pedido {
   entregas?: Record<string, Record<string, number>>;
   /** Grade por entrega editada: chave → { data: { tamanho: peças } }. Quando existe, manda em tudo. */
   gradeEntrega?: Record<string, Record<string, Record<string, number>>>;
-  /** % de cada tamanho por perfil (MASC, FEM, KIDS…), para todas as lojas. Vazio = o que cada loja vendeu. */
+  /** Grade única: todas as lojas seguem a grade de "todas as lojas" (menos as marcadas em gradePropria). */
+  gradeUnica?: boolean;
+  /** Lojas que, com grade única ligada, continuam com a grade própria (vendas dela ou o que foi mexido nela). */
+  gradePropria?: string[];
+  /** Grade única: % de cada tamanho por perfil (MASC, FEM, KIDS…). Vazio = média das lojas pela verba. */
   grade?: Record<string, Record<string, number>>;
   /** % de cada tamanho por perfil só para uma loja: lojaId → perfil → tamanho → %. Manda sobre o de todas. */
   gradeLoja?: Record<string, Record<string, Record<string, number>>>;
@@ -286,13 +290,44 @@ export function gradeVendida(perfil: string, lojaNome?: string): Record<string, 
 /** Loja e pedido, para a grade levar em conta o que foi mexido na Representatividade. */
 export interface GradeCtx { pedido?: Fw27Pedido; loja?: Pick<Fw27Loja, "id" | "nome"> }
 
-/** % de cada tamanho em uso: o da loja (se mexido), senão o de todas as lojas (se mexido), senão o vendido. */
+/** Grade própria da loja: a mexida nela ou, se não, o que ela vendeu. */
+export function gradePropriaDaLoja(perfil: string, ctx: GradeCtx = {}): Record<string, number> {
+  return (ctx.loja && ctx.pedido?.gradeLoja?.[ctx.loja.id]?.[perfil]) || gradeVendida(perfil, ctx.loja?.nome);
+}
+/** Média das grades próprias das lojas do pedido, pesada pela verba. */
+export function gradeMedia(perfil: string, pedido?: Fw27Pedido): Record<string, number> {
+  const lojas = pedido?.lojas || [];
+  if (!lojas.length) return gradeVendida(perfil);
+  const tams = TAMANHOS_PERFIL[perfil] || [];
+  const somaV = lojas.reduce((a, l) => a + (Number(l.verba) || 0), 0);
+  const out: Record<string, number> = {};
+  tams.forEach((t) => { out[t] = 0; });
+  lojas.forEach((l) => {
+    const g = gradePropriaDaLoja(perfil, { pedido, loja: l });
+    const w = somaV ? (Number(l.verba) || 0) / somaV : 1 / lojas.length;
+    tams.forEach((t) => { out[t] += (g[t] || 0) * w; });
+  });
+  return out;
+}
+/** Grade única ligada? (pedido antigo com grade de todas mexida conta como ligada) */
+export const gradeUnicaLigada = (pedido?: Fw27Pedido) => (pedido?.gradeUnica ?? !!(pedido?.grade && Object.keys(pedido.grade).length));
+/** Grade de "todas as lojas": a digitada ou a média. */
+const cacheMedia = new WeakMap<Fw27Pedido, Record<string, Record<string, number>>>();
+export function gradeTodas(perfil: string, pedido?: Fw27Pedido): Record<string, number> {
+  if (pedido?.grade?.[perfil]) return pedido.grade[perfil];
+  if (!pedido) return gradeMedia(perfil);
+  // Média calculada uma vez por versão do pedido (o cálculo passa por ela para cada produto × loja).
+  let c = cacheMedia.get(pedido);
+  if (!c) { c = {}; cacheMedia.set(pedido, c); }
+  return (c[perfil] = c[perfil] || gradeMedia(perfil, pedido));
+}
+/** A loja segue a grade única? */
+export const segueGradeUnica = (pedido: Fw27Pedido | undefined, lojaId?: string) => gradeUnicaLigada(pedido) && !(lojaId && pedido?.gradePropria?.includes(lojaId));
+
+/** % de cada tamanho em uso na loja: a grade única (se ligada e a loja segue) ou a própria. */
 export function gradeDaLoja(perfil: string, ctx: GradeCtx = {}): Record<string, number> {
-  const daLoja = ctx.loja && ctx.pedido?.gradeLoja?.[ctx.loja.id]?.[perfil];
-  if (daLoja) return daLoja;
-  const geral = ctx.pedido?.grade?.[perfil];
-  if (geral) return geral;
-  return gradeVendida(perfil, ctx.loja?.nome);
+  if (segueGradeUnica(ctx.pedido, ctx.loja?.id)) return gradeTodas(perfil, ctx.pedido);
+  return gradePropriaDaLoja(perfil, ctx);
 }
 
 /** Peso de cada tamanho do produto, pela grade da loja naquele perfil (masc, fem, infantil…). */

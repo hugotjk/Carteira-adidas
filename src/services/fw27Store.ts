@@ -35,6 +35,8 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
     gradeEntrega: d.gradeEntrega && typeof d.gradeEntrega === "object" ? d.gradeEntrega : {},
     curva: d.curva && typeof d.curva === "object" ? d.curva : {},
     ...(d.grade && typeof d.grade === "object" && { grade: d.grade }),
+    ...(typeof d.gradeUnica === "boolean" && { gradeUnica: d.gradeUnica }),
+    ...(Array.isArray(d.gradePropria) && { gradePropria: d.gradePropria }),
     ...(d.gradeLoja && typeof d.gradeLoja === "object" && { gradeLoja: d.gradeLoja }),
     status: d.status === "enviado" ? "enviado" : "rascunho",
     atualizadoEm: d.atualizadoEm,
