@@ -72,6 +72,40 @@ export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).
   subgrupo: (MAPA_SUBGRUPO[p.artigo] || p.pack || "OUTROS").toUpperCase(),
 }));
 
+/** Linha do produto (como no PDV): MASCULINA, FEMININA, INFANTO ou ACESSORIOS. */
+export function linhaDe(p: Pick<Fw27Produto, "tipo" | "genero" | "idade">): string {
+  if (/SOCK|BAG|CAP|BALL/i.test(p.tipo)) return "ACESSORIOS";
+  if (p.idade !== "ADULT" || /MINIKIT/i.test(p.tipo)) return "INFANTO";
+  return p.genero === "FEMALE" ? "FEMININA" : "MASCULINA";
+}
+
+/**
+ * Grupo do produto, pela descrição e pelo tipo da AMD: CAMISA TORCEDOR, CAMISA TORCEDOR FEM, CAMISA TORCEDOR INF,
+ * CAMISA PRO, FANSHIRT, CAMISETA, SHORT, JAQUETA… (fem/inf no fim, para comparar igual com igual).
+ */
+export function grupoDe(p: Pick<Fw27Produto, "descricao" | "tipo" | "genero" | "idade">): string {
+  const d = p.descricao.toUpperCase();
+  const t = p.tipo.toUpperCase();
+  let g: string;
+  if (/MINIKIT/.test(t) || /MINI KIT/.test(d)) return "MINI KIT";
+  if (/SOCK/.test(t) || /MEI[AÃ]O/.test(d)) g = / PRO\b/.test(d) ? "MEIÃO PRO" : "MEIÃO";
+  else if (/ARQUIBANCADA|FANSHIRT/.test(d)) g = "FANSHIRT";
+  else if (/CROPPED/.test(d)) g = "CROPPED";
+  else if (/JERSEY \(SHORT/.test(t) && / PRO\b/.test(d)) g = "CAMISA PRO";
+  else if (/JERSEY \(SHORT/.test(t) && /SPECIAL/.test(d)) g = "CAMISA SPECIAL";
+  else if (/JERSEY \(SHORT/.test(t) && /\b(RMX|OG)\b/.test(d)) g = "CAMISA ORIGINALS";
+  else if (/JERSEY \(SHORT/.test(t)) g = "CAMISA TORCEDOR";
+  else if (/SLEEVELESS|TANK/.test(t)) g = "REGATA";
+  else if (/T-SHIRT/.test(t)) g = "CAMISETA";
+  else if (/SHORTS/.test(t)) g = /BERMUDA/.test(d) ? "BERMUDA" : "SHORT";
+  else if (/JACKET/.test(t)) g = "JAQUETA";
+  else if (/PANTS/.test(t)) g = "CALÇA";
+  else if (/DRESS/.test(t)) g = "VESTIDO";
+  else g = t.split(" (")[0] || "OUTROS";
+  const l = linhaDe(p);
+  return l === "FEMININA" ? `${g} FEM` : l === "INFANTO" ? `${g} INF` : g;
+}
+
 /** Ordem de exibição dos subgrupos; os que não estiverem aqui vão no fim. */
 const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
 

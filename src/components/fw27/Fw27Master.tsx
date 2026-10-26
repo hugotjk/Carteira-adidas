@@ -14,7 +14,7 @@ import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27R
 import {
   aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido, AUMENTO_VERBA,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
+  grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
@@ -840,14 +840,14 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
 
 function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   const head = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "000000" } } };
-  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "VALOR PDV"]];
+  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "GRUPO", "LINHA", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "VALOR PDV"]];
   linhas.forEach((x) => {
     if (!x.qtd) return;
     const ge = gradePorEntrega(x.produto, x.grade, x.entregas);
     Object.keys(ge).sort().forEach((d) => {
       x.produto.tamanhos.forEach((t) => {
         const q = Number(ge[d][t] || 0);
-        if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, dataBR(d), t, q, x.produto.preco, q * x.produto.preco]);
+        if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, grupoDe(x.produto), linhaDe(x.produto), dataBR(d), t, q, x.produto.preco, q * x.produto.preco]);
       });
     });
   });
@@ -857,7 +857,7 @@ function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   res.push(["TOTAL", tot.verba, tot.pecas, tot.valor, 100]);
 
   const wb = XLSX.utils.book_new();
-  [["ITENS", itens, [16, 10, 44, 22, 12, 9, 7, 11, 12]], ["RESUMO_LOJAS", res, [20, 14, 10, 14, 12]]].forEach(([nome, dados, larg]: any) => {
+  [["ITENS", itens, [16, 10, 44, 14, 22, 12, 12, 9, 7, 11, 12]], ["RESUMO_LOJAS", res, [20, 14, 10, 14, 12]]].forEach(([nome, dados, larg]: any) => {
     const ws = XLSX.utils.aoa_to_sheet(dados);
     ws["!cols"] = larg.map((w: number) => ({ wch: w }));
     (dados[0] as any[]).forEach((_: any, c: number) => { const ref = XLSX.utils.encode_cell({ r: 0, c }); if (ws[ref]) ws[ref].s = head; });
@@ -953,6 +953,68 @@ const HistoricoCard: React.FC<{ versao: number }> = ({ versao }) => {
   );
 };
 
+/** Resumo por subgrupo, grupo (camisa torcedor, torcedor fem…) ou linha; do mais comprado para o menos, clicando abre as referências. */
+const VISOES = [
+  { id: "subgrupo", label: "Subgrupo", de: (p: Fw27Produto) => p.subgrupo },
+  { id: "grupo", label: "Grupo", de: (p: Fw27Produto) => grupoDe(p) },
+  { id: "linha", label: "Linha", de: (p: Fw27Produto) => linhaDe(p) },
+] as const;
+const AgrupadoCard: React.FC<{ linhas: Fw27Linha[] }> = ({ linhas }) => {
+  const [visao, setVisao] = React.useState<(typeof VISOES)[number]["id"]>("subgrupo");
+  const [abertos, setAbertos] = React.useState<Record<string, boolean>>({});
+  const v = VISOES.find((x) => x.id === visao)!;
+  const total = linhas.reduce((a, x) => a + x.qtd, 0);
+  const grupos = React.useMemo(() => {
+    const m = new Map<string, { q: number; valor: number; refs: Map<string, { p: Fw27Produto; q: number; valor: number }> }>();
+    PRODUTOS.forEach((p) => { const k = v.de(p); if (!m.has(k)) m.set(k, { q: 0, valor: 0, refs: new Map() }); m.get(k)!.refs.set(p.artigo, { p, q: 0, valor: 0 }); });
+    linhas.forEach((x) => {
+      const g = m.get(v.de(x.produto)); if (!g) return;
+      g.q += x.qtd; g.valor += x.valor;
+      const r = g.refs.get(x.produto.artigo)!; r.q += x.qtd; r.valor += x.valor;
+    });
+    return Array.from(m.entries())
+      .map(([k, g]) => ({ k, ...g, refs: Array.from(g.refs.values()).sort((a, b) => b.q - a.q || a.p.artigo.localeCompare(b.p.artigo)) }))
+      .sort((a, b) => b.q - a.q || a.k.localeCompare(b.k));
+  }, [linhas, visao]);
+  const max = Math.max(1, ...grupos.map((g) => g.q));
+  // Subgrupo abre tudo de cara (como era); grupo e linha começam fechados.
+  const aberto = (k: string) => abertos[visao + k] ?? visao === "subgrupo";
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h3 className="text-sm font-extrabold">Por {v.label.toLowerCase()}</h3>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          {VISOES.map((x) => (
+            <button key={x.id} onClick={() => setVisao(x.id)}
+              className={cn("h-7 px-3 rounded-lg text-[10px] font-extrabold uppercase", visao === x.id ? "bg-black text-white" : "text-gray-500")}>{x.label}</button>
+          ))}
+        </div>
+      </div>
+      {grupos.map((g) => (
+        <div key={g.k} className="border-t border-gray-50">
+          <button onClick={() => setAbertos((o) => ({ ...o, [visao + g.k]: !aberto(g.k) }))} className="w-full text-left py-2">
+            <div className="flex justify-between gap-2 text-[10px] font-black uppercase tracking-wide">
+              <span className="flex items-center gap-1 min-w-0">{aberto(g.k) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}<span className="truncate">{g.k}</span><span className="text-gray-400 font-bold normal-case">· {g.refs.length} refs</span></span>
+              <span className="shrink-0">{n0(g.q)} pçs · {total ? pct1((g.q / total) * 100) : "—"} · {brl(g.valor)}</span>
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded mt-1.5"><div className="h-1.5 bg-black rounded" style={{ width: `${(g.q / max) * 100}%` }} /></div>
+          </button>
+          {aberto(g.k) && (
+            <div className="pb-2 pl-4">
+              {g.refs.map(({ p, q, valor }) => (
+                <div key={p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-0.5">
+                  <span className="truncate">{p.artigo} · {p.descricao} {visao !== "subgrupo" && <span className="text-gray-400 font-bold">· {p.subgrupo}</span>}</span>
+                  <span className="shrink-0"><span className="font-extrabold text-gray-900">{n0(q)}</span> <span className="text-gray-400">· {brl(valor)}</span></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+};
+
 const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; linhas: Fw27Linha[]; tot: ReturnType<typeof totais> }> = ({ pedido, atualizar, linhas, tot }) => {
   const [loja, setLoja] = React.useState("TODAS");
   const ls = loja === "TODAS" ? linhas : linhas.filter((x) => x.loja.id === loja);
@@ -995,27 +1057,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
           ))}
         </div>
       </Card>
-      <Card>
-        <h3 className="text-sm font-extrabold mb-2">Por subgrupo e referência</h3>
-        {SUBGRUPOS.map((pk) => {
-          const lp = ls.filter((x) => x.produto.subgrupo === pk);
-          const q = lp.reduce((a, x) => a + x.qtd, 0);
-          if (!q) return null;
-          const refs = PRODUTOS.filter((p) => p.subgrupo === pk).map((p) => ({ p, q: lp.filter((x) => x.produto.artigo === p.artigo).reduce((a, x) => a + x.qtd, 0) })).filter((r) => r.q);
-          return (
-            <div key={pk} className="py-2 border-t border-gray-50">
-              <div className="flex justify-between text-[10px] font-black uppercase tracking-wide">
-                <span>{pk}</span><span>{n0(q)} pçs · {brl(lp.reduce((a, x) => a + x.valor, 0))}</span>
-              </div>
-              {refs.map(({ p, q: rq }) => (
-                <div key={p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 mt-1">
-                  <span className="truncate">{p.artigo} · {p.descricao}</span><span className="font-extrabold text-gray-900">{n0(rq)}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-      </Card>
+      <AgrupadoCard linhas={ls} />
       <ExportarCard pedido={pedido} linhas={linhas} onRegistro={() => setVersaoHist((v) => v + 1)} />
       <div className="grid md:grid-cols-2 gap-2">
         <BotaoConfirmar
