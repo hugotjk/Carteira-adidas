@@ -36,7 +36,9 @@ export interface Fw27Produto {
 export interface Fw27Loja {
   id: string;
   nome: string;
-  verba: number; // R$ a preço PDV
+  verba: number; // R$ a preço PDV (sai de verba total × pct; ver aplicarVerbas)
+  /** % da verba total para esta loja. Vazio = sugerido (peso nas vendas dos últimos 90 dias). */
+  pct?: number;
   /** Código adidas da loja (Sold To / Número do Destinatário no site). */
   codAdidas?: string;
   /** Gestor da loja (vem da lista loja → gestor). Usado para filtrar quem vê o quê. */
@@ -47,6 +49,8 @@ export type Fw27Status = "rascunho" | "enviado";
 
 export interface Fw27Pedido {
   lojas: Fw27Loja[];
+  /** Verba total do pedido (R$ a preço PDV). Vazio = sugerida (vendido jun–out/2026 + 10%). */
+  verbaTotal?: number;
   /** % da verba de cada loja que vai para cada subgrupo (PACK). Vazio = padrão. */
   subgrupos: Record<string, number>;
   /** Grade editada: chave "ARTIGO|lojaId" → { tamanho: peças }. */
@@ -145,7 +149,7 @@ export function dividir(total: number, pesos: number[]): number[] {
 // ---------------- Vendas do PDV (DBSleek) ----------------
 // src/data/fw27Vendas.json sai de scripts/vendas-para-json.py. Só percentuais, sem R$.
 
-export interface Fw27LojaBase { nome: string; gestor: string; codAdidas: string; pct: number }
+export interface Fw27LojaBase { nome: string; gestor: string; codAdidas: string; pct: number; pct90: number; venda: number }
 export const VENDAS = vendasPdv as {
   fonte: string; geradoEm: string;
   lojas: Fw27LojaBase[];
@@ -160,6 +164,40 @@ export const nomeBase = (nome: string) => { const c = lojaCanonica(nome); return
 const LOJA_BASE = new Map(VENDAS.lojas.map((l) => [l.nome, l]));
 /** A loja na base de vendas (gestor, código, % das vendas), pelo nome. */
 export const lojaNaBase = (nome: string) => LOJA_BASE.get(nomeBase(nome));
+
+// ---------------- Verba ----------------
+/** Quanto a verba sugerida passa do vendido (jun–out/2026). */
+export const AUMENTO_VERBA = 0.1;
+
+/** Verba total sugerida: o que as lojas do pedido venderam em jun–out/2026 + 10%. */
+export function verbaSugerida(pedido: Fw27Pedido): number {
+  const vendido = pedido.lojas.reduce((a, l) => a + (lojaNaBase(l.nome)?.venda || 0), 0);
+  return Math.round(vendido * (1 + AUMENTO_VERBA));
+}
+/** Verba total em uso: a digitada ou a sugerida. */
+export const verbaTotalDe = (pedido: Fw27Pedido) => (pedido.verbaTotal !== undefined && pedido.verbaTotal !== null ? Number(pedido.verbaTotal) : verbaSugerida(pedido));
+
+/** % sugerido de cada loja: o peso dela nas vendas de ago–out/2026, entre as lojas do pedido (soma 100). */
+export function pctLojasSugerido(pedido: Fw27Pedido): Record<string, number> {
+  const pesos = pedido.lojas.map((l) => lojaNaBase(l.nome)?.pct90 || 0);
+  const soma = pesos.reduce((a, b) => a + b, 0);
+  const out: Record<string, number> = {};
+  pedido.lojas.forEach((l, i) => { out[l.id] = soma ? (pesos[i] / soma) * 100 : 0; });
+  return out;
+}
+/** % de cada loja em uso: o digitado ou o sugerido. */
+export function pctLojas(pedido: Fw27Pedido): Record<string, number> {
+  const sug = pctLojasSugerido(pedido);
+  const out: Record<string, number> = {};
+  pedido.lojas.forEach((l) => { out[l.id] = l.pct !== undefined && l.pct !== null ? Number(l.pct) : sug[l.id]; });
+  return out;
+}
+/** Pedido com a verba de cada loja = verba total × % da loja (o resto do app lê loja.verba). */
+export function aplicarVerbas(pedido: Fw27Pedido): Fw27Pedido {
+  const total = verbaTotalDe(pedido);
+  const pct = pctLojas(pedido);
+  return { ...pedido, lojas: pedido.lojas.map((l) => ({ ...l, verba: Math.round((total * (pct[l.id] || 0)) / 100) })) };
+}
 
 /** Perfil de grade do produto: masculino, feminino, infantil, mini ou meião. */
 export function perfilGrade(p: Fw27Produto): string {

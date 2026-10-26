@@ -19,8 +19,16 @@ const chaveLocal = (uid: string) => `fw27-pedido-${uid}`;
 function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
   const base = pedidoVazio();
   if (!d) return base;
+  let lojas: Fw27Pedido["lojas"] = Array.isArray(d.lojas) ? d.lojas : base.lojas;
+  let verbaTotal = typeof d.verbaTotal === "number" ? d.verbaTotal : undefined;
+  // Pedido antigo (verba digitada por loja, sem verba total): vira verba total + % de cada loja.
+  if (verbaTotal === undefined && lojas.some((l) => Number(l.verba) > 0 && l.pct === undefined)) {
+    verbaTotal = lojas.reduce((a, l) => a + Number(l.verba || 0), 0);
+    lojas = lojas.map((l) => ({ ...l, pct: verbaTotal ? (Number(l.verba || 0) / verbaTotal!) * 100 : 0 }));
+  }
   return {
-    lojas: Array.isArray(d.lojas) ? d.lojas : base.lojas,
+    lojas,
+    ...(verbaTotal !== undefined && { verbaTotal }),
     subgrupos: d.subgrupos && typeof d.subgrupos === "object" ? d.subgrupos : {},
     itens: d.itens && typeof d.itens === "object" ? d.itens : {},
     entregas: d.entregas && typeof d.entregas === "object" ? d.entregas : {},

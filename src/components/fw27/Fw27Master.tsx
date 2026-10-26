@@ -12,6 +12,7 @@ import { salvarArquivo } from "../../lib/salvarArquivo";
 import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
 import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
 import {
+  aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido, AUMENTO_VERBA,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
   calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
@@ -103,7 +104,9 @@ const SaveBadge: React.FC<{ estado: SaveState; salvoEm: string | null; erro: str
 const Fw27Master: React.FC = () => {
   const { user } = useAuth();
   const { imageMap } = useData();
-  const { pedido, atualizar, estado, erro, salvoEm } = useFw27Pedido(user?.uid);
+  const { pedido: pedidoSalvo, atualizar, estado, erro, salvoEm } = useFw27Pedido(user?.uid);
+  // Verba de cada loja = verba total × % da loja (sugeridos quando não digitados).
+  const pedido = React.useMemo(() => aplicarVerbas(pedidoSalvo), [pedidoSalvo]);
   const [active, setActive] = React.useState<SectionId>("representatividade");
   const linhas = React.useMemo(() => calcular(pedido), [pedido]);
   const tot = React.useMemo(() => totais(pedido, linhas), [pedido, linhas]);
@@ -287,22 +290,24 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
       return { ...p, lojas: p.lojas.filter((x) => x.id !== l.id), itens, entregas, gradeEntrega };
     });
   };
-  const setPctLoja = (l: Fw27Loja, v: number) => {
-    // muda o % mantendo a verba total: a verba da loja vira v% do total
-    const total = tot.verba || 0;
-    if (!total) return;
-    const alvo = Math.min(total, Math.round((total * Math.min(v, 100)) / 100));
-    atualizar((p) => {
-      const outras = p.lojas.filter((x) => x.id !== l.id);
-      const somaOutras = outras.reduce((a, x) => a + Number(x.verba || 0), 0);
-      const resto = total - alvo;
-      return {
-        ...p,
-        lojas: p.lojas.map((x) => x.id === l.id ? { ...x, verba: alvo }
-          : { ...x, verba: Math.round(somaOutras ? (Number(x.verba || 0) / somaOutras) * resto : resto / (outras.length || 1)) }),
-      };
-    });
+  // % e verba de cada loja: mexer numa loja não mexe nas outras; o que falta ou sobra aparece na soma.
+  const verbaTotal = verbaTotalDe(pedido);
+  const sugTotal = verbaSugerida(pedido);
+  const pctL = pctLojas(pedido);
+  const pctSugL = pctLojasSugerido(pedido);
+  const somaPctL = pedido.lojas.reduce((a, l) => a + (pctL[l.id] || 0), 0);
+  const okSomaL = Math.abs(somaPctL - 100) < 0.05;
+  const congelarPcts = (p: Fw27Pedido) => {
+    // Na 1ª edição, as lojas que estavam no sugerido ficam com o número que estava na tela.
+    const atual = pctLojas(p);
+    return p.lojas.map((x) => (x.pct === undefined ? { ...x, pct: atual[x.id] } : x));
   };
+  const setPctLoja = (l: Fw27Loja, v: number) =>
+    atualizar((p) => ({ ...p, lojas: congelarPcts(p).map((x) => (x.id === l.id ? { ...x, pct: Math.min(v, 100) } : x)) }));
+  const setVerbaLoja = (l: Fw27Loja, v: number) =>
+    atualizar((p) => { const t = verbaTotalDe(p); return { ...p, lojas: congelarPcts(p).map((x) => (x.id === l.id ? { ...x, pct: t ? (v / t) * 100 : 0 } : x)) }; });
+  const setVerbaTotal = (v: number) => atualizar((p) => ({ ...p, verbaTotal: v }));
+  const lojasSugeridas = () => atualizar((p) => ({ ...p, lojas: p.lojas.map(({ pct: _p, ...x }) => x) }));
   const setPack = (pk: string, v: number) =>
     atualizar((p) => ({ ...p, subgrupos: { ...pctSubgrupos(p), [pk]: v } }));
 
@@ -310,14 +315,32 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
     <div className="space-y-4">
       <Card className="bg-black text-white border-black">
         <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Verba FW27 total (a preço PDV)</div>
-        <div className="text-3xl font-black mt-1">{brl(tot.verba)}</div>
-        <div className="text-[11px] text-gray-400 mt-1">Soma das verbas das lojas. No pedido: {brl(tot.valor)} ({tot.verba ? pct1((tot.valor / tot.verba) * 100) : "—"} da verba).</div>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-2xl font-black">R$</span>
+          <NumInput ariaLabel="Verba total" value={verbaTotal} disabled={travado} onCommit={setVerbaTotal}
+            className="flex-1 bg-white/10 text-white text-2xl md:text-3xl h-12 text-left px-3 focus:ring-white/30" />
+        </div>
+        <div className="text-[11px] text-gray-400 mt-2">
+          Sugerida: {brl(sugTotal)} = vendido pelas lojas do pedido em jun–out/2026 + {Math.round(AUMENTO_VERBA * 100)}%.
+          {!travado && Math.abs(verbaTotal - sugTotal) >= 1 && (
+            <button onClick={() => atualizar((p) => { const { verbaTotal: _v, ...r } = p; return r as Fw27Pedido; })} className="ml-2 font-black text-white underline">Usar a sugerida</button>
+          )}
+        </div>
+        <div className="text-[11px] text-gray-400 mt-1">No pedido: {brl(tot.valor)} ({verbaTotal ? pct1((tot.valor / verbaTotal) * 100) : "—"} da verba).</div>
       </Card>
 
       {!travado && <BaseLojasCard pedido={pedido} atualizar={atualizar} />}
 
       <Card className="px-4 py-2">
-        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_7rem_2rem] gap-2 py-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
+        <div className="flex items-center justify-between py-2">
+          <h3 className="text-sm font-extrabold">% da verba por loja</h3>
+          {!travado && (
+            <button onClick={lojasSugeridas} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1">
+              <RotateCcw size={11} /> Sugerido
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_7rem_2rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
           <span>Loja</span><span className="text-center">%</span><span className="text-right">Verba R$</span><span />
         </div>
         {pedido.lojas.map((l) => {
@@ -332,11 +355,11 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
                     className="w-24 shrink-0 bg-gray-50 rounded-md px-1.5 h-6 text-[10px] font-bold text-gray-600 outline-none focus:ring-2 focus:ring-black/10" />
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 mt-0.5">
-                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>vendas {pct1(lojaNaBase(l.nome)!.pct)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
+                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>sugerido {pct1(pctSugL[l.id] || 0)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
                 </div>
               </div>
-              <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={t?.pctSugerido || 0} disabled={travado || !tot.verba} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
-              <NumInput ariaLabel={`Verba da loja ${l.nome}`} value={l.verba} disabled={travado} onCommit={(v) => setLoja(l.id, { verba: v })} className="w-full" />
+              <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={pctL[l.id] || 0} disabled={travado} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
+              <NumInput ariaLabel={`Verba da loja ${l.nome}`} value={l.verba} disabled={travado || !verbaTotal} onCommit={(v) => setVerbaLoja(l, v)} className="w-full" />
               {travado ? <span /> : (
                 <BotaoConfirmar rotulo={<Trash2 size={15} />} confirmar="Tirar?" onConfirm={() => delLoja(l)}
                   className="h-9 min-w-8 px-1 rounded-lg flex items-center justify-center text-[9px] font-black text-gray-300 hover:text-red-500" />
@@ -344,6 +367,12 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
             </div>
           );
         })}
+        {pedido.lojas.length > 0 && (
+          <div className={cn("flex justify-between py-3 border-t border-gray-200 text-xs font-black", okSomaL ? "text-emerald-700" : "text-amber-700")}>
+            <span>Soma</span>
+            <span>{okSomaL ? "100% ✓" : `${pct1(somaPctL)} · ${somaPctL < 100 ? "faltam" : "sobram"} ${pct1(Math.abs(100 - somaPctL))} (${brl((Math.abs(100 - somaPctL) * verbaTotal) / 100)})`}</span>
+          </div>
+        )}
         {!travado && (
           <div className="flex gap-2 py-3 border-t border-gray-100">
             <input
@@ -355,7 +384,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
           </div>
         )}
       </Card>
-      <p className="text-[10px] text-gray-400 px-2">Mudar o % de uma loja mantém a verba total e recalcula a verba dela. "vendas" é o peso da loja nas vendas de jun–out/2026.</p>
+      <p className="text-[10px] text-gray-400 px-2">Sugerido = peso da loja nas vendas dos últimos 90 dias (ago–out/2026), entre as lojas deste pedido. Mudar o % (ou a verba) de uma loja não mexe nas outras: o que falta ou sobra aparece na soma.</p>
 
       <Card className="px-4 py-2">
         <div className="flex items-center justify-between py-2">
@@ -415,30 +444,17 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
   }, [user?.email, userProfile]);
   const gestores = React.useMemo(() => Array.from(new Set(visiveis.map((l) => l.gestor).filter(Boolean))).sort(), [visiveis]);
   const [gestor, setGestor] = React.useState("TODOS");
-  const [verba, setVerba] = React.useState(0);
   const noPedido = new Set(pedido.lojas.map((l) => nomeBase(l.nome)));
   const faltam = visiveis.filter((l) => (gestor === "TODOS" || l.gestor === gestor) && !noPedido.has(l.nome));
   const adicionar = () => atualizar((p) => ({
     ...p,
     lojas: [...p.lojas, ...faltam.map((b) => ({ id: novoId(), nome: b.nome, verba: 0, gestor: b.gestor, codAdidas: b.codAdidas }))],
   }));
-  const comBase = pedido.lojas.filter((l) => lojaNaBase(l.nome));
-  const somaPct = comBase.reduce((a, l) => a + (lojaNaBase(l.nome)?.pct || 0), 0);
-  const distribuir = () => {
-    if (!verba || !somaPct) return;
-    atualizar((p) => {
-      const fora = p.lojas.filter((l) => !lojaNaBase(l.nome)).reduce((a, l) => a + Number(l.verba || 0), 0);
-      const resto = Math.max(0, verba - fora);
-      const pesos = p.lojas.map((l) => lojaNaBase(l.nome)?.pct || 0);
-      const qs = dividir(resto, pesos);
-      return { ...p, lojas: p.lojas.map((l, i) => (lojaNaBase(l.nome) ? { ...l, verba: qs[i] } : l)) };
-    });
-  };
   return (
     <Card className="px-4 py-3 space-y-3">
       <div>
         <h3 className="text-sm font-extrabold">Lojas da base de vendas</h3>
-        <p className="text-[10px] text-gray-400 mt-0.5">{visiveis.length} lojas do seu acesso, com gestor e código adidas. O % de cada uma é o peso nas vendas (R$) de jun–out/2026.</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{visiveis.length} lojas do seu acesso, com gestor e código adidas. Cada loja entra com o % sugerido pelas vendas dos últimos 90 dias.</p>
       </div>
       <div className="flex gap-2">
         <select aria-label="Gestor" value={gestor} onChange={(e) => setGestor(e.target.value)}
@@ -451,17 +467,6 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
           <Plus size={14} /> {faltam.length ? `${faltam.length} loja${faltam.length > 1 ? "s" : ""}` : "Todas já estão"}
         </button>
       </div>
-      <div className="flex gap-2 items-center">
-        <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider shrink-0">Verba total R$</span>
-        <NumInput ariaLabel="Verba total para distribuir" value={verba} onCommit={setVerba} className="flex-1" zeroVazio />
-        <button onClick={distribuir} disabled={!verba || !somaPct}
-          className="h-9 px-3 rounded-xl bg-gray-900 text-white text-[11px] font-black disabled:bg-gray-200 disabled:text-gray-400 shrink-0">
-          Dividir pelas vendas
-        </button>
-      </div>
-      {comBase.length < pedido.lojas.length && (
-        <p className="text-[10px] text-amber-700">{pedido.lojas.length - comBase.length} loja(s) fora da base mantêm a verba digitada; o resto é dividido entre as {comBase.length} da base.</p>
-      )}
     </Card>
   );
 };

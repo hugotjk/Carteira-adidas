@@ -5,8 +5,9 @@ e da lista loja → gestor → código adidas (fw27/loja-gestor.csv do projeto).
 Uso:
   python3 scripts/vendas-para-json.py <pasta com VENDAS_MES_DBSLEEK.csv, PRODUTOS_DBSLEEK.csv, loja-gestor.csv>
 
-O arquivo sai SÓ com percentuais (nada de R$ nem peças por loja):
-  lojas      → % de cada loja nas vendas (R$) de jun–out/2026, com gestor e código adidas
+O arquivo sai com percentuais e, por loja, o R$ vendido jun–out/2026 (base da verba sugerida):
+  lojas      → por loja: gestor, código adidas, % nas vendas jun–out/2026 (pct), % nos últimos 90 dias
+               ago–out/2026 (pct90) e R$ vendido jun–out/2026 (venda)
   subgrupos  → % de cada subgrupo da AMD nas vendas de jun–out/2026 (referência)
   curva      → peso de cada mês (jun–nov) pelas vendas de 2026 (ano de Copa, como 2027)
   grade      → peso de cada tamanho por perfil (MASC, FEM, KIDS, MINI, MEIAO) e por loja (2025+2026)
@@ -55,11 +56,18 @@ lista = lg.drop_duplicates("LOJA_APP")
 v26 = v[(v.MES >= "2026-06") & (v.MES <= "2026-10")]
 venda = v26[v26.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").VENDA.sum()
 tot = venda.sum()
+# últimos 90 dias: ago, set e out/2026
+v90 = v[(v.MES >= "2026-08") & (v.MES <= "2026-10")]
+venda90 = v90[v90.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").VENDA.sum()
+tot90 = venda90.sum()
 lojas = []
 for _, r in lista.iterrows():
     lojas.append({
         "nome": r.LOJA_APP, "gestor": r.GESTOR.strip(), "codAdidas": r.COD_ADIDAS.strip(),
         "pct": round(float(venda.get(r.LOJA_APP, 0)) / tot * 100, 4),
+        "pct90": round(float(venda90.get(r.LOJA_APP, 0)) / tot90 * 100, 4),
+        # R$ vendido jun–out/2026 (base da verba sugerida: + 10%)
+        "venda": round(float(venda.get(r.LOJA_APP, 0)), 2),
     })
 lojas.sort(key=lambda x: -x["pct"])
 
