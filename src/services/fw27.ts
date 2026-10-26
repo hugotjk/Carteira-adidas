@@ -59,6 +59,10 @@ export interface Fw27Pedido {
   entregas?: Record<string, Record<string, number>>;
   /** Grade por entrega editada: chave → { data: { tamanho: peças } }. Quando existe, manda em tudo. */
   gradeEntrega?: Record<string, Record<string, Record<string, number>>>;
+  /** % de cada tamanho por perfil (MASC, FEM, KIDS…), para todas as lojas. Vazio = o que cada loja vendeu. */
+  grade?: Record<string, Record<string, number>>;
+  /** % de cada tamanho por perfil só para uma loja: lojaId → perfil → tamanho → %. Manda sobre o de todas. */
+  gradeLoja?: Record<string, Record<string, Record<string, number>>>;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
   curva?: Record<string, number>;
   status: Fw27Status;
@@ -252,20 +256,54 @@ function pesosMeio(p: Fw27Produto): number[] {
   });
 }
 
-/**
- * Peso de cada tamanho: o que a loja vendeu nesse perfil (masc, fem, infantil…) em 2025–2026.
- * Loja com pouca venda puxa para a grade geral; sem venda nenhuma, usa a grade geral.
- */
-export function pesosGrade(p: Fw27Produto, lojaNome?: string): number[] {
-  const tab = VENDAS.grade[perfilGrade(p)];
+// ---------------- Grade por tamanho ----------------
+export const PERFIS_GRADE: { id: string; nome: string }[] = [
+  { id: "MASC", nome: "Masculina" }, { id: "FEM", nome: "Feminina" }, { id: "KIDS", nome: "Infantil" },
+  { id: "MINI", nome: "Mini kit" }, { id: "MEIAO", nome: "Meião" },
+];
+const ORDEM_TAM = ["1824", "2-3A", "3-4A", "4-5A", "5-6A", "6-7A", "7-8A", "910A", "1112", "1314", "1516", "KXL", "2XS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"];
+const tamVenda = (t: string) => TAM_VENDA[t] || t;
+/** Tamanhos de cada perfil (os que existem nos produtos da AMD), em ordem. */
+export const TAMANHOS_PERFIL: Record<string, string[]> = (() => {
+  const out: Record<string, string[]> = {};
+  PRODUTOS.forEach((p) => { const k = perfilGrade(p); out[k] = Array.from(new Set([...(out[k] || []), ...p.tamanhos.map(tamVenda)])); });
+  Object.keys(out).forEach((k) => out[k].sort((a, b) => (ORDEM_TAM.indexOf(a) + 1 || 99) - (ORDEM_TAM.indexOf(b) + 1 || 99)));
+  return out;
+})();
+
+/** % de cada tamanho pelas vendas da loja (2025–2026); loja com pouca venda puxa para a geral. Soma 100. */
+export function gradeVendida(perfil: string, lojaNome?: string): Record<string, number> {
+  const tab = VENDAS.grade[perfil];
   const t = tab && ((lojaNome && tab[nomeBase(lojaNome)]) || tab._todas);
-  if (!t) return pesosMeio(p);
-  const pesos = p.tamanhos.map((x) => Number(t[TAM_VENDA[x] || x] || 0));
+  const tams = TAMANHOS_PERFIL[perfil] || [];
+  const pesos = tams.map((x) => Number(t?.[x] || 0));
+  const soma = pesos.reduce((a, b) => a + b, 0);
+  const out: Record<string, number> = {};
+  tams.forEach((x, i) => { out[x] = soma ? (pesos[i] / soma) * 100 : 100 / (tams.length || 1); });
+  return out;
+}
+
+/** Loja e pedido, para a grade levar em conta o que foi mexido na Representatividade. */
+export interface GradeCtx { pedido?: Fw27Pedido; loja?: Pick<Fw27Loja, "id" | "nome"> }
+
+/** % de cada tamanho em uso: o da loja (se mexido), senão o de todas as lojas (se mexido), senão o vendido. */
+export function gradeDaLoja(perfil: string, ctx: GradeCtx = {}): Record<string, number> {
+  const daLoja = ctx.loja && ctx.pedido?.gradeLoja?.[ctx.loja.id]?.[perfil];
+  if (daLoja) return daLoja;
+  const geral = ctx.pedido?.grade?.[perfil];
+  if (geral) return geral;
+  return gradeVendida(perfil, ctx.loja?.nome);
+}
+
+/** Peso de cada tamanho do produto, pela grade da loja naquele perfil (masc, fem, infantil…). */
+export function pesosGrade(p: Fw27Produto, ctx: GradeCtx = {}): number[] {
+  const t = gradeDaLoja(perfilGrade(p), ctx);
+  const pesos = p.tamanhos.map((x) => Number(t[tamVenda(x)] || 0));
   return pesos.some((x) => x > 0) ? pesos : pesosMeio(p);
 }
 
-export function gradeDe(p: Fw27Produto, total: number, lojaNome?: string): Record<string, number> {
-  const qs = dividir(total, pesosGrade(p, lojaNome));
+export function gradeDe(p: Fw27Produto, total: number, ctx: GradeCtx = {}): Record<string, number> {
+  const qs = dividir(total, pesosGrade(p, ctx));
   const out: Record<string, number> = {};
   p.tamanhos.forEach((t, i) => { out[t] = qs[i]; });
   return out;
@@ -301,7 +339,7 @@ export function calcular(pedido: Fw27Pedido): Fw27Linha[] {
     pedido.lojas.forEach((l) => {
       const sugerido = sugeridoLoja(pedido, p, l, pct);
       const editada = pedido.itens[chaveItem(p.artigo, l.id)];
-      const grade = editada ? { ...gradeDe(p, 0), ...editada } : gradeDe(p, sugerido, l.nome);
+      const grade = editada ? { ...gradeDe(p, 0), ...editada } : gradeDe(p, sugerido, { pedido, loja: l });
       const k = chaveItem(p.artigo, l.id);
       const matriz = pedido.gradeEntrega?.[k];
       if (matriz) {
@@ -548,9 +586,9 @@ export function gradePorEntrega(p: Fw27Produto, grade: Record<string, number>, e
 }
 
 /** Redistribui um total mantendo o formato de uma grade (editada ou não). */
-export function gradeProporcional(p: Fw27Produto, base: Record<string, number>, total: number, lojaNome?: string): Record<string, number> {
+export function gradeProporcional(p: Fw27Produto, base: Record<string, number>, total: number, ctx: GradeCtx = {}): Record<string, number> {
   const pesos = p.tamanhos.map((t) => Number(base[t] || 0));
-  if (!pesos.some((x) => x > 0)) return gradeDe(p, total, lojaNome);
+  if (!pesos.some((x) => x > 0)) return gradeDe(p, total, ctx);
   const qs = dividir(total, pesos);
   const out: Record<string, number> = {};
   p.tamanhos.forEach((t, i) => { out[t] = qs[i]; });

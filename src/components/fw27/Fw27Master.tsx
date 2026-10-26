@@ -14,7 +14,7 @@ import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27R
 import {
   aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido, AUMENTO_VERBA,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
+  PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeVendida, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
@@ -331,7 +331,9 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
       const entregas = { ...(p.entregas || {}) };
       const gradeEntrega = { ...(p.gradeEntrega || {}) };
       [itens, entregas, gradeEntrega].forEach((o: Record<string, unknown>) => Object.keys(o).forEach((k) => { if (k.endsWith("|" + l.id)) delete o[k]; }));
-      return { ...p, lojas: p.lojas.filter((x) => x.id !== l.id), itens, entregas, gradeEntrega };
+      const gradeLoja = { ...(p.gradeLoja || {}) };
+      delete gradeLoja[l.id];
+      return { ...p, lojas: p.lojas.filter((x) => x.id !== l.id), itens, entregas, gradeEntrega, gradeLoja };
     });
   };
   // % e verba de cada loja: mexer numa loja não mexe nas outras; o que falta ou sobra aparece na soma.
@@ -463,6 +465,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
         </div>
       </Card>
       <CurvaCard pedido={pedido} atualizar={atualizar} travado={travado} />
+      <GradeCard pedido={pedido} atualizar={atualizar} travado={travado} />
 
       <p className="text-[10px] text-gray-400 px-2">
         Padrão: cada produto da AMD comparado com o equivalente vendido em 2026 (masc com masc, fem com fem, inf com inf; com e sem Betano juntas).
@@ -511,6 +514,93 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
           <Plus size={14} /> {faltam.length ? `${faltam.length} loja${faltam.length > 1 ? "s" : ""}` : "Todas já estão"}
         </button>
       </div>
+    </Card>
+  );
+};
+
+/**
+ * % de cada tamanho por perfil (masculina, feminina, infantil…). Padrão = o que cada loja vendeu.
+ * Mexer aqui muda a grade de todos os produtos daquele perfil que não tiveram a grade editada à mão.
+ */
+const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; travado: boolean }> = ({ pedido, atualizar, travado }) => {
+  const [loja, setLoja] = React.useState("TODAS");
+  const perfis = PERFIS_GRADE.filter((x) => (TAMANHOS_PERFIL[x.id] || []).length);
+  const lojaSel = pedido.lojas.find((l) => l.id === loja);
+  // Em TODAS: média das lojas pesada pela verba (ou o que foi digitado para todas).
+  const tabela = (perfil: string): Record<string, number> => {
+    if (lojaSel) return gradeDaLoja(perfil, { pedido, loja: lojaSel });
+    if (pedido.grade?.[perfil]) return pedido.grade[perfil];
+    const tams = TAMANHOS_PERFIL[perfil] || [];
+    const out: Record<string, number> = {};
+    const somaV = pedido.lojas.reduce((a, l) => a + (Number(l.verba) || 0), 0);
+    tams.forEach((t) => { out[t] = 0; });
+    pedido.lojas.forEach((l) => {
+      const g = gradeDaLoja(perfil, { pedido, loja: l });
+      const w = somaV ? (Number(l.verba) || 0) / somaV : 1 / (pedido.lojas.length || 1);
+      tams.forEach((t) => { out[t] += (g[t] || 0) * w; });
+    });
+    if (!pedido.lojas.length) return gradeVendida(perfil);
+    return out;
+  };
+  const mexido = (perfil: string) => (lojaSel ? !!pedido.gradeLoja?.[lojaSel.id]?.[perfil] : !!pedido.grade?.[perfil] || Object.values(pedido.gradeLoja || {}).some((g) => g[perfil]));
+  const setTam = (perfil: string, t: string, v: number) => {
+    const nova = { ...tabela(perfil), [t]: v };
+    atualizar((p) => {
+      if (lojaSel) return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: { ...(p.gradeLoja?.[lojaSel.id] || {}), [perfil]: nova } } };
+      // Para todas as lojas: vale para todas, apagando o que tinha sido mexido loja a loja.
+      const gl: NonNullable<Fw27Pedido["gradeLoja"]> = {};
+      Object.entries(p.gradeLoja || {}).forEach(([id, g]) => { const { [perfil]: _x, ...r } = g; if (Object.keys(r).length) gl[id] = r; });
+      return { ...p, grade: { ...(p.grade || {}), [perfil]: nova }, gradeLoja: gl };
+    });
+  };
+  const padrao = (perfil: string) => atualizar((p) => {
+    if (lojaSel) {
+      const { [perfil]: _x, ...r } = p.gradeLoja?.[lojaSel.id] || {};
+      return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: r } };
+    }
+    const { [perfil]: _g, ...grade } = p.grade || {};
+    const gl: NonNullable<Fw27Pedido["gradeLoja"]> = {};
+    Object.entries(p.gradeLoja || {}).forEach(([id, g]) => { const { [perfil]: _x, ...r } = g; if (Object.keys(r).length) gl[id] = r; });
+    return { ...p, grade, gradeLoja: gl };
+  });
+  return (
+    <Card className="px-4 py-2">
+      <div className="py-2">
+        <h3 className="text-sm font-extrabold">Grade por tamanho</h3>
+        <p className="text-[10px] text-gray-400 mt-0.5">% de cada tamanho. Padrão = o que cada loja vendeu em 2025–2026. Mudar aqui muda a grade de todos os produtos do perfil (menos os que você editou à mão).</p>
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
+        {[{ id: "TODAS", nome: "TODAS AS LOJAS" }, ...pedido.lojas].map((l) => (
+          <button key={l.id} onClick={() => setLoja(l.id)} className={cn("shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border", loja === l.id ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>{l.nome}</button>
+        ))}
+      </div>
+      {perfis.map(({ id, nome }) => {
+        const tams = TAMANHOS_PERFIL[id] || [];
+        const tab = tabela(id);
+        const soma = tams.reduce((a, t) => a + (tab[t] || 0), 0);
+        const ok = Math.abs(soma - 100) < 0.05;
+        return (
+          <div key={id} className="py-2 border-t border-gray-100">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase">{nome}{mexido(id) && <span className="ml-2 text-[8px] font-black rounded px-1 py-0.5 bg-amber-50 text-amber-700">EDIT.</span>}</span>
+              {!travado && mexido(id) && (
+                <button onClick={() => padrao(id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Padrão</button>
+              )}
+            </div>
+            <div className="grid gap-1.5 mt-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(tams.length, 8)}, minmax(0, 1fr))` }}>
+              {tams.map((t) => (
+                <div key={t} className="text-center">
+                  <div className="text-[9px] font-extrabold text-gray-400 mb-0.5">{t}</div>
+                  <NumInput ariaLabel={`${nome} tamanho ${t}`} decimals={1} value={tab[t] || 0} disabled={travado} onCommit={(v) => setTam(id, t, v)} className="w-full text-center px-0 text-xs" />
+                </div>
+              ))}
+            </div>
+            <div className={cn("flex justify-between pt-1.5 text-[10px] font-black", ok ? "text-emerald-700" : "text-amber-700")}>
+              <span>Soma</span><span>{ok ? "100% ✓" : `${pct1(soma)} (o app ajusta na proporção)`}</span>
+            </div>
+          </div>
+        );
+      })}
     </Card>
   );
 };
@@ -568,7 +658,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       delete gradeEntrega[k];
       return { ...pd, itens: { ...pd.itens, [k]: grade }, entregas, gradeEntrega };
     });
-  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total, x.loja.nome));
+  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total, { pedido, loja: x.loja }));
   // Grade por entrega: mexeu numa célula, o resto (totais da loja, do tamanho e da entrega) acompanha.
   const salvarMatriz = (p: Fw27Produto, x: Fw27Linha, m: Record<string, Record<string, number>>) =>
     atualizar((pd) => ({ ...pd, gradeEntrega: { ...(pd.gradeEntrega || {}), [chaveItem(p.artigo, x.loja.id)]: m } }));
@@ -584,7 +674,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const m = copiaMatriz(x);
     const atual = m[d] || {};
     const base = p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade;
-    m[d] = gradeProporcional(p, base, Math.round(v), x.loja.nome);
+    m[d] = gradeProporcional(p, base, Math.round(v), { pedido, loja: x.loja });
     salvarMatriz(p, x, m);
   };
   // Mudou o total de um tamanho na loja: espalha pelas entregas como esse tamanho já estava (ou como as entregas estão).
@@ -611,7 +701,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const qs = dividir(Math.round(v), pesosLojas(ls, (x) => x.sugerido));
     atualizar((pd) => {
       const itens = { ...pd.itens }; const entregas = { ...(pd.entregas || {}) }; const gradeEntrega = { ...(pd.gradeEntrega || {}) };
-      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i], x.loja.nome); delete entregas[k]; delete gradeEntrega[k]; });
+      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i], { pedido, loja: x.loja }); delete entregas[k]; delete gradeEntrega[k]; });
       return { ...pd, itens, entregas, gradeEntrega };
     });
   };
@@ -623,7 +713,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       ls.forEach((x, i) => {
         const m = JSON.parse(JSON.stringify(x.gradeEntregas)) as Record<string, Record<string, number>>;
         const atual = m[d] || {};
-        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i], x.loja.nome);
+        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i], { pedido, loja: x.loja });
         gradeEntrega[chaveItem(p.artigo, x.loja.id)] = m;
       });
       return { ...pd, gradeEntrega };
