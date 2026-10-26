@@ -67,7 +67,9 @@ export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opco
   Object.entries(F.artigos).forEach(([art, a]) => {
     const x = porArtigo.get(art);
     // Datas: as do calendário do app a partir do lançamento (só compramos de junho em diante).
-    const datas = CALENDARIO.filter((d) => podeComprar({ lancamento: x?.produto.lancamento || a.lancamento }, d));
+    // (e qualquer data que já tenha peça, para não sumir nada digitado antes de a regra mudar)
+    const datas = CALENDARIO.filter((d) => podeComprar({ lancamento: x?.produto.lancamento || a.lancamento }, d)
+      || Object.values(x?.gradeEntregas[d] || {}).some((q) => Number(q) > 0));
     datas.forEach((d) => {
       a.tamanhos.forEach((t) => {
         const q = Number(x?.gradeEntregas[d]?.[t] || 0);

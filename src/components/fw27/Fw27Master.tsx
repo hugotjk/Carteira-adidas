@@ -589,7 +589,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
   };
   // Mudou o total de um tamanho na loja: espalha pelas entregas como esse tamanho já estava (ou como as entregas estão).
   const setTamanhoTotal = (p: Fw27Produto, x: Fw27Linha, t: string, v: number) => {
-    const datas = Object.keys(x.gradeEntregas).sort().filter((d) => podeComprar(p, d));
+    const datas = Object.keys(x.gradeEntregas).sort().filter((d) => podeComprar(p, d) || (x.entregas[d] || 0) > 0);
     let pesos = datas.map((d) => Number(x.gradeEntregas[d]?.[t] || 0));
     if (!pesos.some((w) => w > 0)) pesos = datas.map((d) => Number(x.entregas[d] || 0));
     if (!pesos.some((w) => w > 0)) pesos = datas.map((_, i) => (i === 0 ? 1 : 0));
@@ -676,7 +676,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
 
       {(() => {
         // Colunas: dias 01 e 15 de jun a nov + lançamentos fora dessas datas.
-        const colunas = CALENDARIO;
+        // Num subgrupo, só as datas em que algum produto dele pode comprar; em TODOS, todas.
+        const colunas = filtro === "TODOS" ? CALENDARIO : CALENDARIO.filter((d) => visiveis.some((p) => podeComprar(p, d) || linhas.some((x) => x.produto.artigo === p.artigo && x.entregas[d] > 0)));
         const nCol = colunas.length + 3;
         const stickyCls = "sticky left-0 z-10";
         const celW = "min-w-[3rem] w-[3rem]";
@@ -716,7 +717,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                         const editado = ls.some((x) => x.editado);
                         const open = aberto === p.artigo;
                         const tag = tagDe(p);
-                        const pode = (d: string) => podeComprar(p, d);
+                        // Data fora da regra que já tem peça (digitada antes) continua editável para poder zerar.
+                        const pode = (d: string) => podeComprar(p, d) || ls.some((x) => (x.entregas[d] || 0) > 0);
                         const ini = inicioCompra(p);
                         const porData = somaPorData(ls);
                         return (

@@ -372,11 +372,18 @@ export function inicioCompra(p: { lancamento: string }): string {
   const min = p.lancamento.slice(0, 4) + PRIMEIRO_DIA_COMPRA;
   return p.lancamento < min ? min : p.lancamento;
 }
-/** Pode comprar nesta data? Só bloqueia antes do lançamento. */
+/**
+ * Pode comprar nesta data? No lançamento (ou 01/06) e depois só nos dias 01 e 15,
+ * com pelo menos 14 dias do lançamento — no máximo 2 entregas por mês.
+ * Ex.: lança 30/07 → 30/07, 15/08, 01/09…; lança 01/08 → 01/08, 15/08…
+ */
 export function podeComprar(p: { lancamento: string }, data: string): boolean {
-  return data >= inicioCompra(p) && data <= ULTIMA_DATA;
+  const inicio = inicioCompra(p);
+  if (data > ULTIMA_DATA || data < inicio) return false;
+  if (data === inicio) return true;
+  return dataRegular(data) && diasEntre(inicio, data) >= DIAS_MIN_ENTRE_ENTREGAS;
 }
-const DIAS_MIN_ENTRE_ENTREGAS = 7;
+const DIAS_MIN_ENTRE_ENTREGAS = 14;
 const PESO_EXTRA_LANCAMENTO = 1.5;
 
 const dataUTC = (iso: string) => new Date(iso + "T00:00:00Z");
