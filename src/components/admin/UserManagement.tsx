@@ -905,6 +905,7 @@ const UserManagement: React.FC = () => {
                                         </div>
                                       )}
                                     </div>
+                                    <LinkNovaSenha email={u.email} />
                                   </motion.div>
                                 )}
                               </AnimatePresence>
@@ -926,6 +927,49 @@ const UserManagement: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+};
+
+/** Envia para o e-mail do usuário o link do Firebase para criar uma senha nova (o mesmo do "Esqueceu a senha?"). */
+const LinkNovaSenha: React.FC<{ email: string }> = ({ email }) => {
+  const { resetPasswordEmail } = useAuth();
+  const [estado, setEstado] = useState<"parado" | "confirmar" | "enviando" | "enviado" | "erro">("parado");
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    if (estado !== "confirmar") return;
+    const t = window.setTimeout(() => setEstado("parado"), 4000);
+    return () => window.clearTimeout(t);
+  }, [estado]);
+  const clicar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (estado === "parado" || estado === "enviado" || estado === "erro") { setEstado("confirmar"); return; }
+    if (estado !== "confirmar") return;
+    setEstado("enviando");
+    try {
+      await resetPasswordEmail(email.trim());
+      setEstado("enviado");
+      setMsg(`Link enviado para ${email}. Peça para olhar também o spam.`);
+    } catch (err: any) {
+      setEstado("erro");
+      setMsg(err?.code === "auth/user-not-found" ? "Esse e-mail não tem login no Firebase." : err?.code === "auth/too-many-requests" ? "Muitos envios seguidos. Tente de novo mais tarde." : "Não consegui enviar o link agora.");
+    }
+  };
+  return (
+    <div className="pt-2 border-t border-gray-100/60" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button" onClick={clicar} disabled={estado === "enviando"}
+        className={cn(
+          "w-full h-8 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all",
+          estado === "confirmar" ? "bg-black text-white border-black" : "bg-white text-gray-700 border-gray-200 hover:border-gray-400",
+          estado === "enviando" && "opacity-60"
+        )}
+      >
+        {estado === "confirmar" ? "Toque de novo para enviar" : estado === "enviando" ? "Enviando…" : "Enviar link de nova senha"}
+      </button>
+      {(estado === "enviado" || estado === "erro") && (
+        <p className={cn("mt-1 text-[9px] font-bold", estado === "enviado" ? "text-emerald-700" : "text-red-600")}>{msg}</p>
+      )}
     </div>
   );
 };
