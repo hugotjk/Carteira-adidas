@@ -487,7 +487,12 @@ const PRODUTOS_BASE = PRODUTOS;
 export const MESES_CURVA = ["06", "07", "08", "09", "10", "11"];
 /** Não existe compra antes de junho: produto que lança antes começa a comprar em 01/06. */
 const PRIMEIRO_DIA_COMPRA = "-06-01";
-const ANO = (PRODUTOS_BASE[0]?.lancamento || "2027").slice(0, 4);
+// Ano da coleção: o mais comum entre os lançamentos (carry over e acessórios podem ter lançado antes).
+const ANO = (() => {
+  const c: Record<string, number> = {};
+  PRODUTOS_BASE.forEach((p) => { const y = p.lancamento.slice(0, 4); c[y] = (c[y] || 0) + 1; });
+  return Object.keys(c).sort((a, b) => c[b] - c[a])[0] || "2027";
+})();
 const ULTIMA_DATA = `${ANO}-11-15`;
 /** Dias 01 e 15 de junho a novembro. */
 const DATAS_REGULARES: string[] = MESES_CURVA.flatMap((m) => [`${ANO}-${m}-01`, `${ANO}-${m}-15`]);
@@ -500,7 +505,7 @@ const dataRegular = (d: string) => DATAS_REGULARES.includes(d);
 
 /** Primeira data em que dá para comprar o produto: o lançamento (ou 01/06, se lançar antes). */
 export function inicioCompra(p: { lancamento: string }): string {
-  const min = p.lancamento.slice(0, 4) + PRIMEIRO_DIA_COMPRA;
+  const min = ANO + PRIMEIRO_DIA_COMPRA;
   return p.lancamento < min ? min : p.lancamento;
 }
 /**
