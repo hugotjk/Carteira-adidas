@@ -28,10 +28,10 @@ REFS = {
     # TIROTECH = Tiro Travel 2026 (fem/inf: treino 2026)
     "KT7307": ["KG9688"], "KT7316": ["JZ2377"], "KT7313": ["JZ2373"], "LH0471": ["KG9687"], "KT7308": [],
     "KT7314": ["KG9689"], "KT7310": ["JZ6365"], "KT7311": [], "KT7315": ["KG9686"],
-    # ICON = Icon 2025 (vende pouco em 2026)
-    "LE6198": ["JN0875"], "LE6196": [], "LK1779": ["JN0880"], "MF9669": ["JF0437"], "LE6197": ["JF0435"],
-    # ORIGINALS = OG2 2026
-    "LE6195": ["KG9693"], "LE6194": ["KG9696"], "LE6191": ["KG9694"], "LE6192": ["JZ2744"], "LD3710": ["KG9691"], "LG5433": [],
+    # ICON = metade Tirotech (Tiro Travel) + metade DNA 2026
+    "LE6198": ["KG9688", "JZ2806"], "LE6196": ["KG9695"], "LK1779": ["KG9687", "KG9707"], "MF9669": ["KG9689", "JZ2808"], "LE6197": ["JZ2809"],
+    # ORIGINALS RMX = Originals 2026; OG GR = Graphic 2026
+    "LE6195": ["JZ2742"], "LE6194": ["JZ2745"], "LE6191": ["JZ2741"], "LE6192": ["JZ2744"], "LD3710": ["KG9690", "JZ2748", "JZ2747"], "LG5433": [],
     # GRAPHIC
     "LD3711": ["KG9690"], "LD3715": [],
     # POLIAMIDAS

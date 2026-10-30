@@ -1213,7 +1213,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
 type Efeito = "baixa" | "alta" | "neutro";
 interface Indicador {
   tipo: string; titulo: string; quando: string; aconteceu: string;
-  medido?: string; efeito: Efeito; em2027: string; ajustar: string;
+  medido?: string; efeito: Efeito; ajustar: string;
 }
 // Fatos de 2025–2026 que mexeram na venda; servem para o franqueado decidir se ajusta a sugestão.
 const INDICADORES: Indicador[] = [
@@ -1221,42 +1221,36 @@ const INDICADORES: Indicador[] = [
     tipo: "Calendário", titulo: "Copa do Mundo masculina (pausa do Brasileirão)", quando: "11/06 a 19/07/2026",
     aconteceu: "Sem jogos do Flamengo por ~5 semanas. A camisa WC Brasil (Fanshirt) fez 31% da venda da rede em junho e quase sumiu depois.",
     medido: "Peças vs 2025: jun −17%, jul −36%", efeito: "baixa",
-    em2027: "2027 tem a Copa Feminina no Brasil (24/06 a 25/07). Confirmar se o calendário do Flamengo para.",
     ajustar: "Curva (jun/jul)",
   },
   {
     tipo: "Competição", titulo: "Eliminação na Libertadores (semifinal, Estudiantes)", quando: "22/10/2026",
     aconteceu: "Saída nos pênaltis no Maracanã, na semifinal.",
     medido: "Outubro vs 2025: −26% (projeção do mês). Em 2025, com a final, novembro vendeu +56% sobre outubro.", efeito: "baixa",
-    em2027: "Campanha longa na Libertadores puxa out/nov; eliminação cedo derruba. Mata-mata de 2027: ago a nov.",
     ajustar: "Curva (out/nov) e verba",
   },
   {
     tipo: "Competição", titulo: "Eliminação na Copa do Brasil (Vitória)", quando: "14/05/2026",
     aconteceu: "Saída antes das oitavas, antes do período da coleção FW.",
     medido: "Sem efeito medido no banco (vendas a partir de junho).", efeito: "neutro",
-    em2027: "Se o time avançar, as fases decisivas caem em ago–out e ajudam a venda.",
     ajustar: "Curva (ago a out)",
   },
   {
     tipo: "Competição", titulo: "Título da Libertadores 2025", quando: "29/11/2025",
     aconteceu: "Final e título no fim de novembro, junto com a Black Friday.",
     medido: "Novembro/2025: 103 mil peças (+56% sobre outubro).", efeito: "alta",
-    em2027: "Não usar novembro/2025 como base: o pico foi do título.",
     ajustar: "Curva (nov)",
   },
   {
     tipo: "Mercado", titulo: "Restrição ao patrocínio de bets (MP 1.394/2026)", quando: "out/2026 (Congresso vota em nov)",
     aconteceu: "Medida provisória restringe publicidade e patrocínio de bets. O governo informou que vender camisas já produzidas com a marca não é nova propaganda.",
     medido: "Em 2026 a Third masculina só existiu com Betano (17% da venda da rede).", efeito: "neutro",
-    em2027: "Camisa com patrocínio pode mudar ou sair. As versões PROMO estão fora do app.",
     ajustar: "Mix da torcedor masculina",
   },
   {
     tipo: "Produto", titulo: "Preço da Pro (antiga Authentic)", quando: "FW27",
     aconteceu: "Pro FW27 a R$ 899,99. Authentic 2026 vendeu a preço médio de R$ 788.",
     medido: "+14% no preço médio. Torcedor (R$ 449,99) e Fanshirt (R$ 229,99) iguais a 2026.", efeito: "baixa",
-    em2027: "Preço mais alto tende a vender menos peças da Pro.",
     ajustar: "Quantidade da Pro",
   },
 ];
@@ -1319,7 +1313,6 @@ const IndicadoresTab: React.FC<{ onIr: (s: SectionId) => void }> = ({ onIr }) =>
             </div>
             <p className="text-[11px] text-gray-600">{i.aconteceu}</p>
             {i.medido && <div className="text-[11px] font-extrabold bg-gray-50 rounded-lg px-2 py-1.5">{i.medido}</div>}
-            <div className="text-[11px]"><span className="font-extrabold">Em 2027: </span><span className="text-gray-600">{i.em2027}</span></div>
             <div className="mt-auto pt-1 flex items-center justify-between text-[10px] font-bold text-gray-400">
               <span>Onde ajustar: <span className="text-gray-700">{i.ajustar}</span></span>
               <button onClick={() => onIr(/curva|verba|mix/i.test(i.ajustar) ? "representatividade" : "sugestao")} className="text-blue-700 hover:underline">ajustar →</button>
