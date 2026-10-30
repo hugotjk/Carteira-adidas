@@ -367,6 +367,35 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
             })}
           </div>
         </div>
+        {abc.length > 0 && (() => {
+          // Por subgrupo: quanto do valor do pedido está em produtos A, B e C.
+          const cores: Record<string, string> = { A: "bg-black", B: "bg-gray-500", C: "bg-gray-300" };
+          const subs = SUBGRUPOS.map((sg) => {
+            const it = abc.filter((x) => x.p.subgrupo === sg);
+            const v = (c: string) => it.filter((x) => x.classe === c).reduce((a, x) => a + x.valor, 0);
+            return { sg, A: v("A"), B: v("B"), C: v("C"), n: { A: it.filter((x) => x.classe === "A").length, B: it.filter((x) => x.classe === "B").length, C: it.filter((x) => x.classe === "C").length }, tot: it.reduce((a, x) => a + x.valor, 0) };
+          }).filter((x) => x.tot > 0).sort((a, b) => b.tot - a.tot);
+          const max = Math.max(1, ...subs.map((x) => x.tot));
+          return (
+            <div className="mt-4">
+              <div className="flex gap-3 text-[9px] font-bold text-gray-500 mb-2">
+                {(["A", "B", "C"] as const).map((c) => <span key={c} className="flex items-center gap-1"><span className={cn("w-2.5 h-2.5 rounded-sm", cores[c])} /> {c}</span>)}
+                <span>valor no pedido por subgrupo</span>
+              </div>
+              {subs.map((x) => (
+                <div key={x.sg} className="grid grid-cols-[7rem_1fr_9rem] gap-2 items-center py-1">
+                  <span className="text-[10px] font-extrabold uppercase truncate">{x.sg}</span>
+                  <div className="flex h-3 rounded overflow-hidden bg-gray-50" style={{ width: `${(x.tot / max) * 100}%` }}>
+                    {(["A", "B", "C"] as const).map((c) => x[c] > 0 && (
+                      <div key={c} className={cores[c]} style={{ width: `${(x[c] / x.tot) * 100}%` }} title={`${c}: ${x.n[c]} refs · ${brl(x[c])}`} />
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-500 text-right">{brl(x.tot)} · {x.n.A}A {x.n.B}B {x.n.C}C</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         {abcAberto && (
           <div className="mt-3 grid md:grid-cols-2 gap-x-6">
             {abc.filter((x) => x.classe === abcAberto).map((x) => (
