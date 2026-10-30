@@ -6,7 +6,7 @@
  */
 import * as XLSX from "xlsx-js-style";
 import { get, set } from "idb-keyval";
-import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { Fw27Linha, Fw27Pedido } from "./fw27";
 
@@ -90,7 +90,9 @@ export async function listarRegistros(acesso: AcessoHistorico = { tudo: true }):
   const porId = new Map<string, Fw27Registro>();
   (await lerLocal()).forEach((r) => porId.set(r.id, r));
   try {
-    const snap = await getDocs(collection(db, COLECAO));
+    // Master/admin leem tudo; os outros logins só podem ler os próprios registros (regra do Firebase).
+    const snap = await getDocs(collection(db, COLECAO)).catch(() =>
+      acesso.uid ? getDocs(query(collection(db, COLECAO), where("porUid", "==", acesso.uid))) : Promise.reject());
     snap.docs.forEach((d: any) => porId.set(d.id, d.data() as Fw27Registro));
   } catch { /* sem acesso ainda: fica só o do aparelho */ }
   return Array.from(porId.values()).filter((r) => podeVer(r, acesso)).sort((a, b) => (a.quando < b.quando ? 1 : -1));

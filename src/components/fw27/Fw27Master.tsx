@@ -190,9 +190,6 @@ const Fw27Master: React.FC = () => {
               </div>
             </div>
           </div>
-          <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 rounded-lg px-2 py-1 shrink-0">
-            <EyeOff size={11} /> Master e admins
-          </span>
         </div>
         {erro && <p className="text-[10px] text-amber-700 mt-3">{erro}</p>}
       </div>
@@ -1335,7 +1332,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
           />
         )}
       </div>
-      <p className="text-[10px] text-gray-400 px-2">Fechar trava o pedido para edição (só o master reabre) e guarda uma cópia no histórico. O Excel de conferência traz loja, artigo, entrega, tamanho e quantidade, para conferir antes de subir no site.</p>
+      <p className="text-[10px] text-gray-400 px-2">Fechar trava o pedido para edição (dá para reabrir) e guarda uma cópia no histórico. O Excel de conferência traz loja, artigo, entrega, tamanho e quantidade, para conferir antes de subir no site.</p>
       <HistoricoCard versao={versaoHist} />
     </div>
   );

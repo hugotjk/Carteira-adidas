@@ -6,6 +6,8 @@ import { useAuth } from "../context/AuthContext";
 // Só master e admins carregam a tela de verdade; os outros logins nem baixam esse código.
 const Fw27Master = React.lazy(() => import("../components/fw27/Fw27Master"));
 const MASTER_EMAIL = "hugotjk2@gmail.com";
+/** true = todos os logins usam a Sugestão; false = só master e admins (os outros veem "Em manutenção"). */
+const LIBERADA_PARA_TODOS = true;
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
@@ -18,12 +20,12 @@ type SectionId = (typeof SECTIONS)[number]["id"];
 
 /**
  * Tela "Sugestão FW27".
- * - Master e admins: tela completa (em preparação, até sair a versão oficial).
- * - Demais logins: "Em manutenção".
+ * - Liberada para todos os logins (30/10/2026). Cada login vê só as lojas do seu acesso.
+ * - "Em manutenção" fica guardado caso precise fechar de novo (LIBERADA = false).
  */
 const SugestaoFW27Page: React.FC = () => {
   const { user, userProfile } = useAuth();
-  const podeVer = userProfile?.role === "master" || userProfile?.role === "admin" || user?.email === MASTER_EMAIL;
+  const podeVer = LIBERADA_PARA_TODOS || userProfile?.role === "master" || userProfile?.role === "admin" || user?.email === MASTER_EMAIL;
   if (podeVer) {
     return (
       <React.Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
