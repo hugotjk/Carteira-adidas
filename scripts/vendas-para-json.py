@@ -5,11 +5,12 @@ e da lista loja → gestor → código adidas (fw27/loja-gestor.csv do projeto).
 Uso:
   python3 scripts/vendas-para-json.py <pasta com VENDAS_MES_DBSLEEK.csv, PRODUTOS_DBSLEEK.csv, loja-gestor.csv>
 
-O arquivo sai SÓ com percentuais (nada de R$ nem peças por loja):
-  lojas      → % de cada loja nas vendas (R$) de jun–out/2026, com gestor e código adidas
+O arquivo sai com percentuais e, por loja, o R$ vendido jun–out/2026 (base da verba sugerida):
+  lojas      → por loja: gestor, código adidas, % nas vendas jun–out/2026 (pct), % nos últimos 90 dias
+               ago–out/2026 (pct90) e R$ vendido jun–out/2026 (venda)
   subgrupos  → % de cada subgrupo da AMD nas vendas de jun–out/2026 (referência)
   curva      → peso de cada mês (jun–nov) pelas vendas de 2026 (ano de Copa, como 2027)
-  grade      → peso de cada tamanho por perfil (MASC, FEM, KIDS, MINI, MEIAO) e por loja (2025+2026)
+  grade      → peso de cada tamanho por perfil (MASC, FEM, KIDS, MINI, MEIAO, CABECA) e por loja (2025+2026)
 """
 import json, re, sys, unicodedata, calendar
 from datetime import date
@@ -36,7 +37,10 @@ lojaApp = lambda n: JUNTAR.get(canon(n), canon(n))
 
 # Tamanho do PDV → tamanho da AMD
 TAM = {"PPP": "2XS", "PP": "XS", "P": "S", "G": "L", "GG": "XL", "2G": "2XL", "XXL": "2XL", "3G": "3XL", "4G": "4XL", "7-8": "7-8A"}
-tam = lambda t: TAM.get(str(t).strip().upper(), str(t).strip().upper())
+def tam(t):
+    t = str(t).strip().upper()
+    if t.startswith("OPF"): t = "OSF" + t[3:]  # boné/bucket: OPFM = OSFM
+    return TAM.get(t, t)
 MINI = {"1824", "2-3A", "3-4A", "4-5A", "6-7A"}
 KIDS = {"5-6A", "7-8A", "910A", "1112", "1314", "1516"}
 ADULTO = {"2XS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"}
@@ -55,11 +59,18 @@ lista = lg.drop_duplicates("LOJA_APP")
 v26 = v[(v.MES >= "2026-06") & (v.MES <= "2026-10")]
 venda = v26[v26.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").VENDA.sum()
 tot = venda.sum()
+# últimos 90 dias: ago, set e out/2026
+v90 = v[(v.MES >= "2026-08") & (v.MES <= "2026-10")]
+venda90 = v90[v90.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").VENDA.sum()
+tot90 = venda90.sum()
 lojas = []
 for _, r in lista.iterrows():
     lojas.append({
         "nome": r.LOJA_APP, "gestor": r.GESTOR.strip(), "codAdidas": r.COD_ADIDAS.strip(),
         "pct": round(float(venda.get(r.LOJA_APP, 0)) / tot * 100, 4),
+        "pct90": round(float(venda90.get(r.LOJA_APP, 0)) / tot90 * 100, 4),
+        # R$ vendido jun–out/2026 (base da verba sugerida: + 10%)
+        "venda": round(float(venda.get(r.LOJA_APP, 0)), 2),
     })
 lojas.sort(key=lambda x: -x["pct"])
 
@@ -86,7 +97,8 @@ def perfil(row):
     if g in ("MEIAO", "MEIA") or "MEIAO" in d: return "MEIAO"
     if t in MINI or g == "MINI": return "MINI"
     if t in KIDS or l == "INFANTO": return "KIDS"
-    if t not in ADULTO: return None  # boné, bola, chuteira…
+    if t.startswith("OSF"): return "CABECA"  # boné / bucket
+    if t not in ADULTO: return None  # bola, chuteira…
     return "FEM" if l == "FEMININA" else "MASC"
 
 base = v.groupby(["LOJA_APP", "REFERENCIA_FORNECEDOR", "TAM", "GRUPO", "DESCRICAO", "LINHA"], dropna=False).PECAS.sum().reset_index()

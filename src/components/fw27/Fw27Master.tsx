@@ -2,7 +2,7 @@ import React from "react";
 import * as XLSX from "xlsx-js-style";
 import {
   Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Plus, Trash2, ChevronDown, ChevronUp,
-  Download, Lock, Unlock, RotateCcw, X, Cloud, CloudOff, Loader2, Search, EyeOff,
+  Download, Lock, Unlock, RotateCcw, X, Cloud, CloudOff, Loader2, Search, EyeOff, Activity, TrendingDown, TrendingUp, Minus,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../context/AuthContext";
@@ -12,8 +12,9 @@ import { salvarArquivo } from "../../lib/salvarArquivo";
 import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
 import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
 import {
+  aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido, AUMENTO_VERBA,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
+  vendaEstoqueDe, refsComparaveis, PERIODO_VENDA_ESTOQUE, PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
@@ -22,6 +23,7 @@ const SECTIONS = [
   { id: "representatividade", label: "Representatividade por Loja", icon: Store },
   { id: "sugestao", label: "Sugestão", icon: Lightbulb },
   { id: "resumo", label: "Resumo", icon: ClipboardList },
+  { id: "indicadores", label: "Indicadores", icon: Activity },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -47,6 +49,42 @@ const tagDe = (p: Fw27Produto) =>
   p.carryOver === "CARRY OVER" ? { label: "CARRY OVER", cls: "bg-blue-50 text-blue-700" }
   : { label: "NOVO", cls: "bg-emerald-50 text-emerald-700" };
 
+type Direcao = "cima" | "baixo" | "esq" | "dir";
+const SETAS: Record<string, Direcao> = { ArrowUp: "cima", ArrowDown: "baixo", ArrowLeft: "esq", ArrowRight: "dir" };
+
+/** Coluna (contando colSpan) de cada célula de uma linha. */
+function colunasDaLinha(tr: HTMLTableRowElement): { td: HTMLTableCellElement; ini: number; fim: number }[] {
+  let c = 0;
+  return Array.from(tr.cells).map((td) => { const ini = c; c += td.colSpan || 1; return { td, ini, fim: c - 1 }; });
+}
+const campoDa = (td?: HTMLTableCellElement | null) => td?.querySelector<HTMLInputElement>("input:not([disabled])") || null;
+
+/** Vai para a célula editável vizinha (como no Excel). Devolve false se não houver para onde ir. */
+function navegar(el: HTMLInputElement, dir: Direcao): boolean {
+  const td = el.closest("td");
+  const tr = td?.parentElement as HTMLTableRowElement | null;
+  const tabela = el.closest("table");
+  if (!td || !tr || !tabela) return false;
+  const minha = colunasDaLinha(tr).find((x) => x.td === td);
+  if (!minha) return false;
+  let alvo: HTMLInputElement | null = null;
+  if (dir === "esq" || dir === "dir") {
+    const cels = colunasDaLinha(tr);
+    const i = cels.findIndex((x) => x.td === td);
+    for (let j = dir === "dir" ? i + 1 : i - 1; j >= 0 && j < cels.length && !alvo; j += dir === "dir" ? 1 : -1) alvo = campoDa(cels[j].td);
+  } else {
+    const linhas = Array.from(tabela.rows);
+    const i = linhas.indexOf(tr);
+    for (let j = dir === "baixo" ? i + 1 : i - 1; j >= 0 && j < linhas.length && !alvo; j += dir === "baixo" ? 1 : -1) {
+      const cel = colunasDaLinha(linhas[j]).find((x) => x.ini <= minha.ini && x.fim >= minha.ini);
+      alvo = campoDa(cel?.td);
+    }
+  }
+  if (!alvo) return false;
+  alvo.focus();
+  return true;
+}
+
 /** Campo numérico que só grava ao sair do campo ou apertar Enter. */
 const NumInput: React.FC<{
   value: number; onCommit: (v: number) => void; disabled?: boolean; className?: string; decimals?: number; ariaLabel: string; zeroVazio?: boolean;
@@ -64,10 +102,31 @@ const NumInput: React.FC<{
       inputMode="decimal" aria-label={ariaLabel} disabled={disabled} value={txt}
       onFocus={(e) => { setFoco(true); e.target.select(); }}
       onBlur={() => { setFoco(false); commit(); }}
-      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+      onKeyDown={(e) => {
+        const el = e.target as HTMLInputElement;
+        const dir = SETAS[e.key] || (e.key === "Enter" ? (e.shiftKey ? "cima" : "baixo") : null);
+        if (dir && el.closest("table")) {
+          // Na tabela, setas e Enter andam como no Excel (o valor grava ao sair da célula).
+          e.preventDefault();
+          if (!navegar(el, dir) && e.key === "Enter") el.blur();
+        } else if (e.key === "Enter") el.blur();
+      }}
       onChange={(e) => setTxt(e.target.value)}
       className={cn("bg-gray-50 rounded-xl px-2 h-9 text-right font-extrabold text-sm outline-none focus:ring-2 focus:ring-black/10 disabled:text-gray-400 min-w-0", className)}
     />
+  );
+};
+
+/** Venda (verde) × estoque (vermelho) do produto equivalente de 2026. */
+const VendaEst: React.FC<{ artigo: string; lojas: string[]; tamanho?: string; pequeno?: boolean }> = ({ artigo, lojas, tamanho, pequeno }) => {
+  if (!refsComparaveis(artigo).length) return <span className="text-[9px] text-gray-300 font-bold" title="Sem produto equivalente em 2026">s/ comp.</span>;
+  const { venda, estoque } = vendaEstoqueDe(artigo, lojas, tamanho);
+  return (
+    <span className={cn("font-extrabold whitespace-nowrap", pequeno ? "text-[10px]" : "text-[11px]")} title={`Equivalente 2026: ${refsComparaveis(artigo).join(", ")} — ${PERIODO_VENDA_ESTOQUE}`}>
+      <span className="text-emerald-600">{n0(venda)}</span>
+      <span className="text-gray-300 mx-0.5">×</span>
+      <span className="text-red-500">{estoque === null ? "–" : n0(estoque)}</span>
+    </span>
   );
 };
 
@@ -103,7 +162,9 @@ const SaveBadge: React.FC<{ estado: SaveState; salvoEm: string | null; erro: str
 const Fw27Master: React.FC = () => {
   const { user } = useAuth();
   const { imageMap } = useData();
-  const { pedido, atualizar, estado, erro, salvoEm } = useFw27Pedido(user?.uid);
+  const { pedido: pedidoSalvo, atualizar, estado, erro, salvoEm } = useFw27Pedido(user?.uid);
+  // Verba de cada loja = verba total × % da loja (sugeridos quando não digitados).
+  const pedido = React.useMemo(() => aplicarVerbas(pedidoSalvo), [pedidoSalvo]);
   const [active, setActive] = React.useState<SectionId>("representatividade");
   const linhas = React.useMemo(() => calcular(pedido), [pedido]);
   const tot = React.useMemo(() => totais(pedido, linhas), [pedido, linhas]);
@@ -138,7 +199,7 @@ const Fw27Master: React.FC = () => {
       </div>
 
       <div className={cn("p-4 md:p-6 space-y-4 w-full mx-auto", active === "sugestao" ? "max-w-[112rem]" : "max-w-5xl")}>
-        <div className={cn("grid grid-cols-2 md:grid-cols-4 gap-2", active === "sugestao" && "max-w-5xl mx-auto")}>
+        <div className={cn("grid grid-cols-2 md:grid-cols-5 gap-2", active === "sugestao" && "max-w-5xl mx-auto")}>
           {SECTIONS.map((s) => (
             <button
               key={s.id} onClick={() => setActive(s.id)}
@@ -162,6 +223,7 @@ const Fw27Master: React.FC = () => {
             {active === "sugestao" && (semLojas
               ? <SemLojas onIr={() => setActive("representatividade")} />
               : <SugestaoTab pedido={pedido} atualizar={atualizar} linhas={linhas} tot={tot} travado={travado} imageMap={imageMap} />)}
+            {active === "indicadores" && <IndicadoresTab onIr={setActive} />}
             {active === "resumo" && (semLojas
               ? <SemLojas onIr={() => setActive("representatividade")} />
               : <ResumoTab pedido={pedido} atualizar={atualizar} linhas={linhas} tot={tot} />)}
@@ -284,25 +346,29 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
       const entregas = { ...(p.entregas || {}) };
       const gradeEntrega = { ...(p.gradeEntrega || {}) };
       [itens, entregas, gradeEntrega].forEach((o: Record<string, unknown>) => Object.keys(o).forEach((k) => { if (k.endsWith("|" + l.id)) delete o[k]; }));
-      return { ...p, lojas: p.lojas.filter((x) => x.id !== l.id), itens, entregas, gradeEntrega };
+      const gradeLoja = { ...(p.gradeLoja || {}) };
+      delete gradeLoja[l.id];
+      return { ...p, lojas: p.lojas.filter((x) => x.id !== l.id), itens, entregas, gradeEntrega, gradeLoja };
     });
   };
-  const setPctLoja = (l: Fw27Loja, v: number) => {
-    // muda o % mantendo a verba total: a verba da loja vira v% do total
-    const total = tot.verba || 0;
-    if (!total) return;
-    const alvo = Math.min(total, Math.round((total * Math.min(v, 100)) / 100));
-    atualizar((p) => {
-      const outras = p.lojas.filter((x) => x.id !== l.id);
-      const somaOutras = outras.reduce((a, x) => a + Number(x.verba || 0), 0);
-      const resto = total - alvo;
-      return {
-        ...p,
-        lojas: p.lojas.map((x) => x.id === l.id ? { ...x, verba: alvo }
-          : { ...x, verba: Math.round(somaOutras ? (Number(x.verba || 0) / somaOutras) * resto : resto / (outras.length || 1)) }),
-      };
-    });
+  // % e verba de cada loja: mexer numa loja não mexe nas outras; o que falta ou sobra aparece na soma.
+  const verbaTotal = verbaTotalDe(pedido);
+  const sugTotal = verbaSugerida(pedido);
+  const pctL = pctLojas(pedido);
+  const pctSugL = pctLojasSugerido(pedido);
+  const somaPctL = pedido.lojas.reduce((a, l) => a + (pctL[l.id] || 0), 0);
+  const okSomaL = Math.abs(somaPctL - 100) < 0.05;
+  const congelarPcts = (p: Fw27Pedido) => {
+    // Na 1ª edição, as lojas que estavam no sugerido ficam com o número que estava na tela.
+    const atual = pctLojas(p);
+    return p.lojas.map((x) => (x.pct === undefined ? { ...x, pct: atual[x.id] } : x));
   };
+  const setPctLoja = (l: Fw27Loja, v: number) =>
+    atualizar((p) => ({ ...p, lojas: congelarPcts(p).map((x) => (x.id === l.id ? { ...x, pct: Math.min(v, 100) } : x)) }));
+  const setVerbaLoja = (l: Fw27Loja, v: number) =>
+    atualizar((p) => { const t = verbaTotalDe(p); return { ...p, lojas: congelarPcts(p).map((x) => (x.id === l.id ? { ...x, pct: t ? (v / t) * 100 : 0 } : x)) }; });
+  const setVerbaTotal = (v: number) => atualizar((p) => ({ ...p, verbaTotal: v }));
+  const lojasSugeridas = () => atualizar((p) => ({ ...p, lojas: p.lojas.map(({ pct: _p, ...x }) => x) }));
   const setPack = (pk: string, v: number) =>
     atualizar((p) => ({ ...p, subgrupos: { ...pctSubgrupos(p), [pk]: v } }));
 
@@ -310,14 +376,32 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
     <div className="space-y-4">
       <Card className="bg-black text-white border-black">
         <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Verba FW27 total (a preço PDV)</div>
-        <div className="text-3xl font-black mt-1">{brl(tot.verba)}</div>
-        <div className="text-[11px] text-gray-400 mt-1">Soma das verbas das lojas. No pedido: {brl(tot.valor)} ({tot.verba ? pct1((tot.valor / tot.verba) * 100) : "—"} da verba).</div>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-2xl font-black">R$</span>
+          <NumInput ariaLabel="Verba total" value={verbaTotal} disabled={travado} onCommit={setVerbaTotal}
+            className="flex-1 bg-white/10 text-white text-2xl md:text-3xl h-12 text-left px-3 focus:ring-white/30" />
+        </div>
+        <div className="text-[11px] text-gray-400 mt-2">
+          Sugerida: {brl(sugTotal)} = vendido pelas lojas do pedido em jun–out/2026 + {Math.round(AUMENTO_VERBA * 100)}%.
+          {!travado && Math.abs(verbaTotal - sugTotal) >= 1 && (
+            <button onClick={() => atualizar((p) => { const { verbaTotal: _v, ...r } = p; return r as Fw27Pedido; })} className="ml-2 font-black text-white underline">Usar a sugerida</button>
+          )}
+        </div>
+        <div className="text-[11px] text-gray-400 mt-1">No pedido: {brl(tot.valor)} ({verbaTotal ? pct1((tot.valor / verbaTotal) * 100) : "—"} da verba).</div>
       </Card>
 
       {!travado && <BaseLojasCard pedido={pedido} atualizar={atualizar} />}
 
       <Card className="px-4 py-2">
-        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_7rem_2rem] gap-2 py-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
+        <div className="flex items-center justify-between py-2">
+          <h3 className="text-sm font-extrabold">% da verba por loja</h3>
+          {!travado && (
+            <button onClick={lojasSugeridas} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1">
+              <RotateCcw size={11} /> Sugerido
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_7rem_2rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
           <span>Loja</span><span className="text-center">%</span><span className="text-right">Verba R$</span><span />
         </div>
         {pedido.lojas.map((l) => {
@@ -332,11 +416,11 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
                     className="w-24 shrink-0 bg-gray-50 rounded-md px-1.5 h-6 text-[10px] font-bold text-gray-600 outline-none focus:ring-2 focus:ring-black/10" />
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 mt-0.5">
-                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>vendas {pct1(lojaNaBase(l.nome)!.pct)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
+                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>sugerido {pct1(pctSugL[l.id] || 0)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
                 </div>
               </div>
-              <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={t?.pctSugerido || 0} disabled={travado || !tot.verba} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
-              <NumInput ariaLabel={`Verba da loja ${l.nome}`} value={l.verba} disabled={travado} onCommit={(v) => setLoja(l.id, { verba: v })} className="w-full" />
+              <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={pctL[l.id] || 0} disabled={travado} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
+              <NumInput ariaLabel={`Verba da loja ${l.nome}`} value={l.verba} disabled={travado || !verbaTotal} onCommit={(v) => setVerbaLoja(l, v)} className="w-full" />
               {travado ? <span /> : (
                 <BotaoConfirmar rotulo={<Trash2 size={15} />} confirmar="Tirar?" onConfirm={() => delLoja(l)}
                   className="h-9 min-w-8 px-1 rounded-lg flex items-center justify-center text-[9px] font-black text-gray-300 hover:text-red-500" />
@@ -344,6 +428,12 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
             </div>
           );
         })}
+        {pedido.lojas.length > 0 && (
+          <div className={cn("flex justify-between py-3 border-t border-gray-200 text-xs font-black", okSomaL ? "text-emerald-700" : "text-amber-700")}>
+            <span>Soma</span>
+            <span>{okSomaL ? "100% ✓" : `${pct1(somaPctL)} · ${somaPctL < 100 ? "faltam" : "sobram"} ${pct1(Math.abs(100 - somaPctL))} (${brl((Math.abs(100 - somaPctL) * verbaTotal) / 100)})`}</span>
+          </div>
+        )}
         {!travado && (
           <div className="flex gap-2 py-3 border-t border-gray-100">
             <input
@@ -355,7 +445,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
           </div>
         )}
       </Card>
-      <p className="text-[10px] text-gray-400 px-2">Mudar o % de uma loja mantém a verba total e recalcula a verba dela. "vendas" é o peso da loja nas vendas de jun–out/2026.</p>
+      <p className="text-[10px] text-gray-400 px-2">Sugerido = peso da loja nas vendas dos últimos 90 dias (ago–out/2026), entre as lojas deste pedido. Mudar o % (ou a verba) de uma loja não mexe nas outras: o que falta ou sobra aparece na soma.</p>
 
       <Card className="px-4 py-2">
         <div className="flex items-center justify-between py-2">
@@ -390,6 +480,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
         </div>
       </Card>
       <CurvaCard pedido={pedido} atualizar={atualizar} travado={travado} />
+      <GradeCard pedido={pedido} atualizar={atualizar} travado={travado} />
 
       <p className="text-[10px] text-gray-400 px-2">
         Padrão: cada produto da AMD comparado com o equivalente vendido em 2026 (masc com masc, fem com fem, inf com inf; com e sem Betano juntas).
@@ -415,30 +506,17 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
   }, [user?.email, userProfile]);
   const gestores = React.useMemo(() => Array.from(new Set(visiveis.map((l) => l.gestor).filter(Boolean))).sort(), [visiveis]);
   const [gestor, setGestor] = React.useState("TODOS");
-  const [verba, setVerba] = React.useState(0);
   const noPedido = new Set(pedido.lojas.map((l) => nomeBase(l.nome)));
   const faltam = visiveis.filter((l) => (gestor === "TODOS" || l.gestor === gestor) && !noPedido.has(l.nome));
   const adicionar = () => atualizar((p) => ({
     ...p,
     lojas: [...p.lojas, ...faltam.map((b) => ({ id: novoId(), nome: b.nome, verba: 0, gestor: b.gestor, codAdidas: b.codAdidas }))],
   }));
-  const comBase = pedido.lojas.filter((l) => lojaNaBase(l.nome));
-  const somaPct = comBase.reduce((a, l) => a + (lojaNaBase(l.nome)?.pct || 0), 0);
-  const distribuir = () => {
-    if (!verba || !somaPct) return;
-    atualizar((p) => {
-      const fora = p.lojas.filter((l) => !lojaNaBase(l.nome)).reduce((a, l) => a + Number(l.verba || 0), 0);
-      const resto = Math.max(0, verba - fora);
-      const pesos = p.lojas.map((l) => lojaNaBase(l.nome)?.pct || 0);
-      const qs = dividir(resto, pesos);
-      return { ...p, lojas: p.lojas.map((l, i) => (lojaNaBase(l.nome) ? { ...l, verba: qs[i] } : l)) };
-    });
-  };
   return (
     <Card className="px-4 py-3 space-y-3">
       <div>
         <h3 className="text-sm font-extrabold">Lojas da base de vendas</h3>
-        <p className="text-[10px] text-gray-400 mt-0.5">{visiveis.length} lojas do seu acesso, com gestor e código adidas. O % de cada uma é o peso nas vendas (R$) de jun–out/2026.</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{visiveis.length} lojas do seu acesso, com gestor e código adidas. Cada loja entra com o % sugerido pelas vendas dos últimos 90 dias.</p>
       </div>
       <div className="flex gap-2">
         <select aria-label="Gestor" value={gestor} onChange={(e) => setGestor(e.target.value)}
@@ -451,17 +529,101 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
           <Plus size={14} /> {faltam.length ? `${faltam.length} loja${faltam.length > 1 ? "s" : ""}` : "Todas já estão"}
         </button>
       </div>
-      <div className="flex gap-2 items-center">
-        <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider shrink-0">Verba total R$</span>
-        <NumInput ariaLabel="Verba total para distribuir" value={verba} onCommit={setVerba} className="flex-1" zeroVazio />
-        <button onClick={distribuir} disabled={!verba || !somaPct}
-          className="h-9 px-3 rounded-xl bg-gray-900 text-white text-[11px] font-black disabled:bg-gray-200 disabled:text-gray-400 shrink-0">
-          Dividir pelas vendas
-        </button>
+    </Card>
+  );
+};
+
+/**
+ * % de cada tamanho por perfil (masculina, feminina, infantil…). Padrão = o que cada loja vendeu.
+ * Mexer aqui muda a grade de todos os produtos daquele perfil que não tiveram a grade editada à mão.
+ */
+const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; travado: boolean }> = ({ pedido, atualizar, travado }) => {
+  const [loja, setLoja] = React.useState("TODAS");
+  const perfis = PERFIS_GRADE.filter((x) => (TAMANHOS_PERFIL[x.id] || []).length);
+  const lojaSel = pedido.lojas.find((l) => l.id === loja);
+  const unica = gradeUnicaLigada(pedido);
+  const propria = !!lojaSel && !!pedido.gradePropria?.includes(lojaSel.id);
+  // O que dá para editar nesta visão: TODAS só com grade única; loja só se ela não segue a única.
+  const editavel = !travado && (lojaSel ? !segueGradeUnica(pedido, lojaSel.id) : unica);
+  const tabela = (perfil: string) => (lojaSel ? gradeDaLoja(perfil, { pedido, loja: lojaSel }) : gradeTodas(perfil, pedido));
+  const mexido = (perfil: string) => (lojaSel ? !!pedido.gradeLoja?.[lojaSel.id]?.[perfil] : !!pedido.grade?.[perfil]);
+  const setTam = (perfil: string, t: string, v: number) => {
+    const nova = { ...tabela(perfil), [t]: v };
+    atualizar((p) => (lojaSel
+      ? { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: { ...(p.gradeLoja?.[lojaSel.id] || {}), [perfil]: nova } } }
+      : { ...p, grade: { ...(p.grade || {}), [perfil]: nova } }));
+  };
+  const padrao = (perfil: string) => atualizar((p) => {
+    if (lojaSel) { const { [perfil]: _x, ...r } = p.gradeLoja?.[lojaSel.id] || {}; return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: r } }; }
+    const { [perfil]: _g, ...grade } = p.grade || {};
+    return { ...p, grade };
+  });
+  const setUnica = (v: boolean) => atualizar((p) => ({ ...p, gradeUnica: v }));
+  const setPropria = (v: boolean) => lojaSel && atualizar((p) => {
+    const l = new Set(p.gradePropria || []);
+    if (v) l.add(lojaSel.id); else l.delete(lojaSel.id);
+    return { ...p, gradePropria: Array.from(l) };
+  });
+  const nPropria = pedido.lojas.filter((l) => pedido.gradePropria?.includes(l.id)).length;
+  return (
+    <Card className="px-4 py-2">
+      <div className="py-2">
+        <h3 className="text-sm font-extrabold">Grade por tamanho</h3>
+        <p className="text-[10px] text-gray-400 mt-0.5">% de cada tamanho. Padrão = o que cada loja vendeu em 2025–2026. Mudar aqui muda a grade de todos os produtos do perfil (menos os que você editou à mão).</p>
       </div>
-      {comBase.length < pedido.lojas.length && (
-        <p className="text-[10px] text-amber-700">{pedido.lojas.length - comBase.length} loja(s) fora da base mantêm a verba digitada; o resto é dividido entre as {comBase.length} da base.</p>
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
+        {[{ id: "TODAS", nome: "TODAS AS LOJAS" }, ...pedido.lojas].map((l) => {
+          const marca = l.id !== "TODAS" && unica && pedido.gradePropria?.includes(l.id);
+          return (
+            <button key={l.id} onClick={() => setLoja(l.id)} className={cn("shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border", loja === l.id ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>
+              {l.nome}{marca && <span className="ml-1 text-amber-500">●</span>}
+            </button>
+          );
+        })}
+      </div>
+      {!travado && (
+        <label className="flex items-center gap-2 py-2 text-[11px] font-bold text-gray-700 cursor-pointer select-none">
+          {lojaSel ? (
+            unica && <><input type="checkbox" checked={propria} onChange={(e) => setPropria(e.target.checked)} className="accent-black" /> Esta loja usa grade própria (vendas dela), fora da grade única</>
+          ) : (
+            <><input type="checkbox" checked={unica} onChange={(e) => setUnica(e.target.checked)} className="accent-black" /> Mesma grade para todas as lojas{unica && nPropria > 0 && <span className="text-gray-400 font-semibold">(menos {nPropria} com grade própria ●)</span>}</>
+          )}
+        </label>
       )}
+      {!editavel && !travado && (
+        <p className="text-[10px] text-gray-500 bg-gray-50 rounded-lg px-2 py-1.5 mb-1">
+          {lojaSel ? "Esta loja segue a grade de TODAS AS LOJAS. Marque “grade própria” para mexer só nela." : "Média das lojas (cada uma usa a própria grade). Marque “mesma grade para todas” para editar uma grade só, ou clique numa loja."}
+        </p>
+      )}
+      {perfis.map(({ id, nome }) => {
+        const tams = TAMANHOS_PERFIL[id] || [];
+        const tab = tabela(id);
+        const soma = tams.reduce((a, t) => a + (tab[t] || 0), 0);
+        const ok = Math.abs(soma - 100) < 0.05;
+        return (
+          <div key={id} className="py-2 border-t border-gray-100">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase">{nome}{mexido(id) && <span className="ml-2 text-[8px] font-black rounded px-1 py-0.5 bg-amber-50 text-amber-700">EDIT.</span>}</span>
+              {editavel && mexido(id) && (
+                <button onClick={() => padrao(id)} className="text-[10px] font-bold text-gray-400 hover:text-black flex items-center gap-1"><RotateCcw size={11} /> Padrão</button>
+              )}
+            </div>
+            <div className="grid gap-1.5 mt-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(tams.length, 8)}, minmax(0, 1fr))` }}>
+              {tams.map((t) => (
+                <div key={t} className="text-center">
+                  <div className="text-[9px] font-extrabold text-gray-400 mb-0.5">{t}</div>
+                  <NumInput ariaLabel={`${nome} tamanho ${t}`} decimals={1} value={tab[t] || 0} disabled={!editavel} onCommit={(v) => setTam(id, t, v)} className="w-full text-center px-0 text-xs" />
+                </div>
+              ))}
+            </div>
+            {editavel && (
+              <div className={cn("flex justify-between pt-1.5 text-[10px] font-black", ok ? "text-emerald-700" : "text-amber-700")}>
+                <span>Soma</span><span>{ok ? "100% ✓" : `${pct1(soma)} (o app ajusta na proporção)`}</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </Card>
   );
 };
@@ -495,7 +657,7 @@ const CurvaCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 pb-2">
         Cada entrega cobre as vendas até a próxima, pesadas por esta curva; o lançamento leva 50% a mais.
-        Padrão: peças vendidas por mês em 2026 (ano de Copa, como 2027). Outubro completado até o fim do mês; novembro estimado por out/2026 × (nov ÷ out de 2025).
+        Padrão: curva definida a partir da venda e do recebimento de 2026 (jun 12 · jul 33 · ago 20 · set 15 · out 10 · nov 10).
       </p>
     </Card>
   );
@@ -519,7 +681,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       delete gradeEntrega[k];
       return { ...pd, itens: { ...pd.itens, [k]: grade }, entregas, gradeEntrega };
     });
-  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total, x.loja.nome));
+  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total, { pedido, loja: x.loja }));
   // Grade por entrega: mexeu numa célula, o resto (totais da loja, do tamanho e da entrega) acompanha.
   const salvarMatriz = (p: Fw27Produto, x: Fw27Linha, m: Record<string, Record<string, number>>) =>
     atualizar((pd) => ({ ...pd, gradeEntrega: { ...(pd.gradeEntrega || {}), [chaveItem(p.artigo, x.loja.id)]: m } }));
@@ -535,12 +697,12 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const m = copiaMatriz(x);
     const atual = m[d] || {};
     const base = p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade;
-    m[d] = gradeProporcional(p, base, Math.round(v), x.loja.nome);
+    m[d] = gradeProporcional(p, base, Math.round(v), { pedido, loja: x.loja });
     salvarMatriz(p, x, m);
   };
   // Mudou o total de um tamanho na loja: espalha pelas entregas como esse tamanho já estava (ou como as entregas estão).
   const setTamanhoTotal = (p: Fw27Produto, x: Fw27Linha, t: string, v: number) => {
-    const datas = Object.keys(x.gradeEntregas).sort().filter((d) => podeComprar(p, d));
+    const datas = Object.keys(x.gradeEntregas).sort().filter((d) => podeComprar(p, d) || (x.entregas[d] || 0) > 0);
     let pesos = datas.map((d) => Number(x.gradeEntregas[d]?.[t] || 0));
     if (!pesos.some((w) => w > 0)) pesos = datas.map((d) => Number(x.entregas[d] || 0));
     if (!pesos.some((w) => w > 0)) pesos = datas.map((_, i) => (i === 0 ? 1 : 0));
@@ -562,7 +724,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const qs = dividir(Math.round(v), pesosLojas(ls, (x) => x.sugerido));
     atualizar((pd) => {
       const itens = { ...pd.itens }; const entregas = { ...(pd.entregas || {}) }; const gradeEntrega = { ...(pd.gradeEntrega || {}) };
-      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i], x.loja.nome); delete entregas[k]; delete gradeEntrega[k]; });
+      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i], { pedido, loja: x.loja }); delete entregas[k]; delete gradeEntrega[k]; });
       return { ...pd, itens, entregas, gradeEntrega };
     });
   };
@@ -574,7 +736,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       ls.forEach((x, i) => {
         const m = JSON.parse(JSON.stringify(x.gradeEntregas)) as Record<string, Record<string, number>>;
         const atual = m[d] || {};
-        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i], x.loja.nome);
+        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i], { pedido, loja: x.loja });
         gradeEntrega[chaveItem(p.artigo, x.loja.id)] = m;
       });
       return { ...pd, gradeEntrega };
@@ -627,8 +789,10 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
 
       {(() => {
         // Colunas: dias 01 e 15 de jun a nov + lançamentos fora dessas datas.
-        const colunas = CALENDARIO;
-        const nCol = colunas.length + 3;
+        // Num subgrupo, só as datas em que algum produto dele pode comprar; em TODOS, todas.
+        const colunas = filtro === "TODOS" ? CALENDARIO : CALENDARIO.filter((d) => visiveis.some((p) => podeComprar(p, d) || linhas.some((x) => x.produto.artigo === p.artigo && x.entregas[d] > 0)));
+        const nCol = colunas.length + 4;
+        const nomesLojas = pedido.lojas.map((l) => l.nome);
         const stickyCls = "sticky left-0 z-10";
         const celW = "min-w-[3rem] w-[3rem]";
         // Linha vertical mais forte quando muda o mês.
@@ -642,6 +806,9 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                 <thead>
                   <tr className="text-[10px] text-gray-400">
                     <th className={cn(stickyCls, "bg-white text-left font-extrabold px-3 py-2 min-w-[11rem] w-[11rem] md:min-w-[18rem] md:w-[18rem] border-b border-gray-100")}>Produto / loja</th>
+                    <th title={`Produto equivalente de 2026 — ${PERIODO_VENDA_ESTOQUE}`} className="font-extrabold px-1 py-2 border-b border-gray-100 min-w-[4.5rem] w-[4.5rem] leading-tight">
+                      <span className="text-emerald-600">Venda</span> × <span className="text-red-500">Est.</span><div className="text-[8px] font-bold">2026</div>
+                    </th>
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Total</th>
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Sug.</th>
                     {colunas.map((d, i) => (
@@ -667,7 +834,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                         const editado = ls.some((x) => x.editado);
                         const open = aberto === p.artigo;
                         const tag = tagDe(p);
-                        const pode = (d: string) => podeComprar(p, d);
+                        // Data fora da regra que já tem peça (digitada antes) continua editável para poder zerar.
+                        const pode = (d: string) => podeComprar(p, d) || ls.some((x) => (x.entregas[d] || 0) > 0);
                         const ini = inicioCompra(p);
                         const porData = somaPorData(ls);
                         return (
@@ -687,6 +855,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                   </div>
                                 </div>
                               </td>
+                              <td className="px-1 py-1 text-center border-b border-gray-100 border-t-2 border-t-gray-200"><VendaEst artigo={p.artigo} lojas={nomesLojas} /></td>
                               <td className="px-0.5 py-1 border-b border-gray-100 border-t-2 border-t-gray-200" onClick={(e) => e.stopPropagation()}>
                                 <NumInput ariaLabel={`Total de ${p.artigo}`} value={total} disabled={travado} onCommit={(v) => setTotalProduto(p, ls, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
                               </td>
@@ -712,6 +881,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                       <div className="text-[9px] font-semibold text-gray-400">{brl(x.valor)} · <span className="text-blue-700 font-bold">{gOpen ? "▲ fechar grade" : "▼ ver grade"}</span></div>
                                     </button>
                                   </td>
+                                  <td className="px-1 py-1 text-center border-b border-gray-100"><VendaEst artigo={p.artigo} lojas={[x.loja.nome]} /></td>
                                   <td className="px-0.5 py-1 border-b border-gray-100">
                                     <NumInput ariaLabel={`Total de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
                                   </td>
@@ -736,6 +906,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                           <button onClick={() => voltar(p, x.loja.id)} className="ml-2 text-[9px] font-bold text-gray-400 hover:text-black inline-flex items-center gap-0.5"><RotateCcw size={9} /> sugestão</button>
                                         )}
                                       </td>
+                                      <td className={cn("px-1 py-0.5 text-center", ultima && "border-b border-gray-200")}><VendaEst artigo={p.artigo} lojas={[x.loja.nome]} tamanho={t} pequeno /></td>
                                       <td className={cn("px-0.5 py-0.5", ultima && "border-b border-gray-200")}>
                                         <NumInput ariaLabel={`${x.loja.nome} total tamanho ${t}`} value={totT} disabled={travado} onCommit={(v) => setTamanhoTotal(p, x, t, v)} className={cn("w-full h-7 text-center px-0 text-[11px] rounded-md bg-gray-50 font-bold", !totT && "text-gray-300")} />
                                       </td>
@@ -789,14 +960,14 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
 
 function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   const head = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "000000" } } };
-  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "VALOR PDV"]];
+  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "GRUPO", "LINHA", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "VALOR PDV"]];
   linhas.forEach((x) => {
     if (!x.qtd) return;
     const ge = gradePorEntrega(x.produto, x.grade, x.entregas);
     Object.keys(ge).sort().forEach((d) => {
       x.produto.tamanhos.forEach((t) => {
         const q = Number(ge[d][t] || 0);
-        if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, dataBR(d), t, q, x.produto.preco, q * x.produto.preco]);
+        if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, grupoDe(x.produto), linhaDe(x.produto), dataBR(d), t, q, x.produto.preco, q * x.produto.preco]);
       });
     });
   });
@@ -806,7 +977,7 @@ function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   res.push(["TOTAL", tot.verba, tot.pecas, tot.valor, 100]);
 
   const wb = XLSX.utils.book_new();
-  [["ITENS", itens, [16, 10, 44, 22, 12, 9, 7, 11, 12]], ["RESUMO_LOJAS", res, [20, 14, 10, 14, 12]]].forEach(([nome, dados, larg]: any) => {
+  [["ITENS", itens, [16, 10, 44, 14, 22, 12, 12, 9, 7, 11, 12]], ["RESUMO_LOJAS", res, [20, 14, 10, 14, 12]]].forEach(([nome, dados, larg]: any) => {
     const ws = XLSX.utils.aoa_to_sheet(dados);
     ws["!cols"] = larg.map((w: number) => ({ wch: w }));
     (dados[0] as any[]).forEach((_: any, c: number) => { const ref = XLSX.utils.encode_cell({ r: 0, c }); if (ws[ref]) ws[ref].s = head; });
@@ -902,6 +1073,68 @@ const HistoricoCard: React.FC<{ versao: number }> = ({ versao }) => {
   );
 };
 
+/** Resumo por subgrupo, grupo (camisa torcedor, torcedor fem…) ou linha; do mais comprado para o menos, clicando abre as referências. */
+const VISOES = [
+  { id: "subgrupo", label: "Subgrupo", de: (p: Fw27Produto) => p.subgrupo },
+  { id: "grupo", label: "Grupo", de: (p: Fw27Produto) => grupoDe(p) },
+  { id: "linha", label: "Linha", de: (p: Fw27Produto) => linhaDe(p) },
+] as const;
+const AgrupadoCard: React.FC<{ linhas: Fw27Linha[] }> = ({ linhas }) => {
+  const [visao, setVisao] = React.useState<(typeof VISOES)[number]["id"]>("subgrupo");
+  const [abertos, setAbertos] = React.useState<Record<string, boolean>>({});
+  const v = VISOES.find((x) => x.id === visao)!;
+  const total = linhas.reduce((a, x) => a + x.qtd, 0);
+  const grupos = React.useMemo(() => {
+    const m = new Map<string, { q: number; valor: number; refs: Map<string, { p: Fw27Produto; q: number; valor: number }> }>();
+    PRODUTOS.forEach((p) => { const k = v.de(p); if (!m.has(k)) m.set(k, { q: 0, valor: 0, refs: new Map() }); m.get(k)!.refs.set(p.artigo, { p, q: 0, valor: 0 }); });
+    linhas.forEach((x) => {
+      const g = m.get(v.de(x.produto)); if (!g) return;
+      g.q += x.qtd; g.valor += x.valor;
+      const r = g.refs.get(x.produto.artigo)!; r.q += x.qtd; r.valor += x.valor;
+    });
+    return Array.from(m.entries())
+      .map(([k, g]) => ({ k, ...g, refs: Array.from(g.refs.values()).sort((a, b) => b.q - a.q || a.p.artigo.localeCompare(b.p.artigo)) }))
+      .sort((a, b) => b.q - a.q || a.k.localeCompare(b.k));
+  }, [linhas, visao]);
+  const max = Math.max(1, ...grupos.map((g) => g.q));
+  // Subgrupo abre tudo de cara (como era); grupo e linha começam fechados.
+  const aberto = (k: string) => abertos[visao + k] ?? visao === "subgrupo";
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h3 className="text-sm font-extrabold">Por {v.label.toLowerCase()}</h3>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          {VISOES.map((x) => (
+            <button key={x.id} onClick={() => setVisao(x.id)}
+              className={cn("h-7 px-3 rounded-lg text-[10px] font-extrabold uppercase", visao === x.id ? "bg-black text-white" : "text-gray-500")}>{x.label}</button>
+          ))}
+        </div>
+      </div>
+      {grupos.map((g) => (
+        <div key={g.k} className="border-t border-gray-50">
+          <button onClick={() => setAbertos((o) => ({ ...o, [visao + g.k]: !aberto(g.k) }))} className="w-full text-left py-2">
+            <div className="flex justify-between gap-2 text-[10px] font-black uppercase tracking-wide">
+              <span className="flex items-center gap-1 min-w-0">{aberto(g.k) ? <ChevronUp size={12} /> : <ChevronDown size={12} />}<span className="truncate">{g.k}</span><span className="text-gray-400 font-bold normal-case">· {g.refs.length} refs</span></span>
+              <span className="shrink-0">{n0(g.q)} pçs · {total ? pct1((g.q / total) * 100) : "—"} · {brl(g.valor)}</span>
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded mt-1.5"><div className="h-1.5 bg-black rounded" style={{ width: `${(g.q / max) * 100}%` }} /></div>
+          </button>
+          {aberto(g.k) && (
+            <div className="pb-2 pl-4">
+              {g.refs.map(({ p, q, valor }) => (
+                <div key={p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-0.5">
+                  <span className="truncate">{p.artigo} · {p.descricao} {visao !== "subgrupo" && <span className="text-gray-400 font-bold">· {p.subgrupo}</span>}</span>
+                  <span className="shrink-0"><span className="font-extrabold text-gray-900">{n0(q)}</span> <span className="text-gray-400">· {brl(valor)}</span></span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+};
+
 const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; linhas: Fw27Linha[]; tot: ReturnType<typeof totais> }> = ({ pedido, atualizar, linhas, tot }) => {
   const [loja, setLoja] = React.useState("TODAS");
   const ls = loja === "TODAS" ? linhas : linhas.filter((x) => x.loja.id === loja);
@@ -944,27 +1177,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
           ))}
         </div>
       </Card>
-      <Card>
-        <h3 className="text-sm font-extrabold mb-2">Por subgrupo e referência</h3>
-        {SUBGRUPOS.map((pk) => {
-          const lp = ls.filter((x) => x.produto.subgrupo === pk);
-          const q = lp.reduce((a, x) => a + x.qtd, 0);
-          if (!q) return null;
-          const refs = PRODUTOS.filter((p) => p.subgrupo === pk).map((p) => ({ p, q: lp.filter((x) => x.produto.artigo === p.artigo).reduce((a, x) => a + x.qtd, 0) })).filter((r) => r.q);
-          return (
-            <div key={pk} className="py-2 border-t border-gray-50">
-              <div className="flex justify-between text-[10px] font-black uppercase tracking-wide">
-                <span>{pk}</span><span>{n0(q)} pçs · {brl(lp.reduce((a, x) => a + x.valor, 0))}</span>
-              </div>
-              {refs.map(({ p, q: rq }) => (
-                <div key={p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 mt-1">
-                  <span className="truncate">{p.artigo} · {p.descricao}</span><span className="font-extrabold text-gray-900">{n0(rq)}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-      </Card>
+      <AgrupadoCard linhas={ls} />
       <ExportarCard pedido={pedido} linhas={linhas} onRegistro={() => setVersaoHist((v) => v + 1)} />
       <div className="grid md:grid-cols-2 gap-2">
         <BotaoConfirmar
@@ -991,6 +1204,123 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 px-2">Fechar trava o pedido para edição (só o master reabre) e guarda uma cópia no histórico. O Excel de conferência traz loja, artigo, entrega, tamanho e quantidade, para conferir antes de subir no site.</p>
       <HistoricoCard versao={versaoHist} />
+    </div>
+  );
+};
+
+// ============================= INDICADORES =============================
+
+type Efeito = "baixa" | "alta" | "neutro";
+interface Indicador {
+  tipo: string; titulo: string; quando: string; aconteceu: string;
+  medido?: string; efeito: Efeito; ajustar: string;
+}
+// Fatos de 2025–2026 que mexeram na venda; servem para o franqueado decidir se ajusta a sugestão.
+const INDICADORES: Indicador[] = [
+  {
+    tipo: "Calendário", titulo: "Copa do Mundo masculina (pausa do Brasileirão)", quando: "11/06 a 19/07/2026",
+    aconteceu: "Sem jogos do Flamengo por ~5 semanas. A camisa WC Brasil (Fanshirt) fez 31% da venda da rede em junho e quase sumiu depois.",
+    medido: "Peças vs 2025: jun −17%, jul −36%", efeito: "baixa",
+    ajustar: "Curva (jun/jul)",
+  },
+  {
+    tipo: "Competição", titulo: "Eliminação na Libertadores (semifinal, Estudiantes)", quando: "22/10/2026",
+    aconteceu: "Saída nos pênaltis no Maracanã, na semifinal.",
+    medido: "Outubro vs 2025: −26% (projeção do mês). Em 2025, com a final, novembro vendeu +56% sobre outubro.", efeito: "baixa",
+    ajustar: "Curva (out/nov) e verba",
+  },
+  {
+    tipo: "Competição", titulo: "Eliminação na Copa do Brasil (Vitória)", quando: "14/05/2026",
+    aconteceu: "Saída antes das oitavas, antes do período da coleção FW.",
+    medido: "Sem efeito medido no banco (vendas a partir de junho).", efeito: "neutro",
+    ajustar: "Curva (ago a out)",
+  },
+  {
+    tipo: "Competição", titulo: "Título da Libertadores 2025", quando: "29/11/2025",
+    aconteceu: "Final e título no fim de novembro, junto com a Black Friday.",
+    medido: "Novembro/2025: 103 mil peças (+56% sobre outubro).", efeito: "alta",
+    ajustar: "Curva (nov)",
+  },
+  {
+    tipo: "Mercado", titulo: "Restrição ao patrocínio de bets (MP 1.394/2026)", quando: "out/2026 (Congresso vota em nov)",
+    aconteceu: "Medida provisória restringe publicidade e patrocínio de bets. O governo informou que vender camisas já produzidas com a marca não é nova propaganda.",
+    medido: "Em 2026 a Third masculina só existiu com Betano (17% da venda da rede).", efeito: "neutro",
+    ajustar: "Mix da torcedor masculina",
+  },
+  {
+    tipo: "Produto", titulo: "Preço da Pro (antiga Authentic)", quando: "FW27",
+    aconteceu: "Pro FW27 a R$ 899,99. Authentic 2026 vendeu a preço médio de R$ 788.",
+    medido: "+14% no preço médio. Torcedor (R$ 449,99) e Fanshirt (R$ 229,99) iguais a 2026.", efeito: "baixa",
+    ajustar: "Quantidade da Pro",
+  },
+];
+
+const MESES_IND = [
+  { m: "Jun", a25: 63898, a26: 52804 }, { m: "Jul", a25: 56039, a26: 36019 }, { m: "Ago", a25: 104186, a26: 71279 },
+  { m: "Set", a25: 47840, a26: 48117 }, { m: "Out", a25: 66194, a26: 36242, parcial: true }, { m: "Nov", a25: 103318, a26: 0 },
+];
+
+const IndicadoresTab: React.FC<{ onIr: (s: SectionId) => void }> = ({ onIr }) => {
+  const [tipo, setTipo] = React.useState("TODOS");
+  const tipos = ["TODOS", ...Array.from(new Set(INDICADORES.map((i) => i.tipo)))];
+  const max = Math.max(...MESES_IND.map((x) => Math.max(x.a25, x.a26)));
+  const icone = (e: Efeito) => (e === "baixa" ? <TrendingDown size={14} /> : e === "alta" ? <TrendingUp size={14} /> : <Minus size={14} />);
+  const cor = (e: Efeito) => (e === "baixa" ? "bg-red-50 text-red-600" : e === "alta" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500");
+  return (
+    <div className="space-y-4">
+      <Card>
+        <h3 className="text-sm font-extrabold">Venda por mês — 2025 × 2026</h3>
+        <p className="text-[10px] text-gray-400 mt-0.5">Peças ADIDAS FLA na rede. Outubro/2026 até 23/10.</p>
+        <div className="flex items-end gap-3 h-40 mt-4">
+          {MESES_IND.map((x) => {
+            const dif = x.a26 && x.a25 ? ((x.parcial ? (x.a26 * 31) / 23 : x.a26) / x.a25 - 1) * 100 : null;
+            return (
+              <div key={x.m} className="flex-1 flex flex-col items-center h-full justify-end gap-1">
+                {dif !== null && <div className={cn("text-[9px] font-black", dif < 0 ? "text-red-600" : "text-emerald-700")}>{dif > 0 ? "+" : ""}{Math.round(dif)}%</div>}
+                <div className="w-full flex items-end gap-0.5 flex-1">
+                  <div className="flex-1 bg-gray-300 rounded-t" style={{ height: `${(x.a25 / max) * 100}%` }} title={`2025: ${n0(x.a25)}`} />
+                  <div className={cn("flex-1 rounded-t", x.parcial ? "bg-black/60" : "bg-black")} style={{ height: `${(x.a26 / max) * 100}%` }} title={`2026: ${n0(x.a26)}`} />
+                </div>
+                <div className="text-[9px] font-extrabold text-gray-500">{x.m}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-3 mt-2 text-[9px] font-bold text-gray-500">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-300 rounded-sm" /> 2025</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-black rounded-sm" /> 2026</span>
+          <span>% = 2026 contra 2025 (outubro projetado)</span>
+        </div>
+      </Card>
+
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        {tipos.map((t) => (
+          <button key={t} onClick={() => setTipo(t)} className={cn("shrink-0 h-9 px-3 rounded-xl text-[10px] font-extrabold border uppercase", tipo === t ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>{t}</button>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        {INDICADORES.filter((i) => tipo === "TODOS" || i.tipo === tipo).map((i) => (
+          <Card key={i.titulo} className="flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-[9px] font-extrabold uppercase tracking-wider text-gray-400">{i.tipo} · {i.quando}</div>
+                <div className="text-sm font-extrabold leading-tight mt-0.5">{i.titulo}</div>
+              </div>
+              <span className={cn("shrink-0 flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-black uppercase", cor(i.efeito))}>
+                {icone(i.efeito)} {i.efeito === "baixa" ? "derrubou" : i.efeito === "alta" ? "puxou" : "atenção"}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-600">{i.aconteceu}</p>
+            {i.medido && <div className="text-[11px] font-extrabold bg-gray-50 rounded-lg px-2 py-1.5">{i.medido}</div>}
+            <div className="mt-auto pt-1 flex items-center justify-between text-[10px] font-bold text-gray-400">
+              <span>Onde ajustar: <span className="text-gray-700">{i.ajustar}</span></span>
+              <button onClick={() => onIr(/curva|verba|mix/i.test(i.ajustar) ? "representatividade" : "sugestao")} className="text-blue-700 hover:underline">ajustar →</button>
+            </div>
+          </Card>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-400 px-2">Os indicadores não mudam a sugestão sozinhos: servem para você decidir se mexe na curva, na verba ou nas quantidades.</p>
     </div>
   );
 };

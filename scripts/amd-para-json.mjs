@@ -1,5 +1,7 @@
 // Converte a planilha AMD (FW27) para src/data/fw27Amd.json.
 // Uso: node scripts/amd-para-json.mjs caminho/AMD_FW27.xlsx
+// - Se a planilha tiver SS27 e FW27 juntas (coluna SEASON), usa só as linhas FW27.
+// - Artigos em src/data/fw27AmdFora.json ("fora") não entram (ex.: camisas PROMO, SPECIAL guardado).
 import fs from "node:fs";
 import XLSX from "xlsx-js-style";
 
@@ -14,13 +16,18 @@ const iso = (v) => {
   const m = String(v).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : String(v).slice(0, 10);
 };
+const fora = JSON.parse(fs.readFileSync(new URL("../src/data/fw27AmdFora.json", import.meta.url), "utf8"));
+const ignorar = new Set(Object.keys(fora.fora || {}));
+const temSeason = linhas.some((r) => String(col(r, "SEASON")).trim());
 const produtos = linhas
   .filter((r) => String(col(r, "ARTICLE")).trim())
+  .filter((r) => !temSeason || String(col(r, "SEASON")).trim().toUpperCase() === "FW27")
+  .filter((r) => !ignorar.has(String(col(r, "ARTICLE")).trim().toUpperCase()))
   .map((r) => ({
     artigo: String(col(r, "ARTICLE")).trim().toUpperCase(),
     descricao: String(col(r, "LOCAL DESCRIPTION")).trim().toUpperCase(),
     pack: String(col(r, "PACK")).trim().toUpperCase() || "SEM PACK",
-    tipo: String(col(r, "PROD TYPE")).trim().toUpperCase(),
+    tipo: String(col(r, "PROD TYPE") || col(r, "PRODUCT TYPE")).trim().toUpperCase(),
     genero: String(col(r, "GENDER")).trim().toUpperCase(),
     idade: String(col(r, "AGE GROUP")).trim().toUpperCase(),
     tamanhos: String(col(r, "LOCAL SIZE")).split(",").map((t) => t.trim()).filter(Boolean),

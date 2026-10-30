@@ -15,6 +15,7 @@ import amd from "../data/fw27Amd.json";
 import subgruposPorArtigo from "../data/fw27Subgrupos.json";
 import vendasPdv from "../data/fw27Vendas.json";
 import comparaveis from "../data/fw27Comparaveis.json";
+import vendaEstoque from "../data/fw27VendaEstoque.json";
 import { lojaCanonica } from "./fw27Lojas";
 
 export interface Fw27Produto {
@@ -36,7 +37,9 @@ export interface Fw27Produto {
 export interface Fw27Loja {
   id: string;
   nome: string;
-  verba: number; // R$ a preço PDV
+  verba: number; // R$ a preço PDV (sai de verba total × pct; ver aplicarVerbas)
+  /** % da verba total para esta loja. Vazio = sugerido (peso nas vendas dos últimos 90 dias). */
+  pct?: number;
   /** Código adidas da loja (Sold To / Número do Destinatário no site). */
   codAdidas?: string;
   /** Gestor da loja (vem da lista loja → gestor). Usado para filtrar quem vê o quê. */
@@ -47,6 +50,8 @@ export type Fw27Status = "rascunho" | "enviado";
 
 export interface Fw27Pedido {
   lojas: Fw27Loja[];
+  /** Verba total do pedido (R$ a preço PDV). Vazio = sugerida (vendido jun–out/2026 + 10%). */
+  verbaTotal?: number;
   /** % da verba de cada loja que vai para cada subgrupo (PACK). Vazio = padrão. */
   subgrupos: Record<string, number>;
   /** Grade editada: chave "ARTIGO|lojaId" → { tamanho: peças }. */
@@ -55,6 +60,14 @@ export interface Fw27Pedido {
   entregas?: Record<string, Record<string, number>>;
   /** Grade por entrega editada: chave → { data: { tamanho: peças } }. Quando existe, manda em tudo. */
   gradeEntrega?: Record<string, Record<string, Record<string, number>>>;
+  /** Grade única: todas as lojas seguem a grade de "todas as lojas" (menos as marcadas em gradePropria). */
+  gradeUnica?: boolean;
+  /** Lojas que, com grade única ligada, continuam com a grade própria (vendas dela ou o que foi mexido nela). */
+  gradePropria?: string[];
+  /** Grade única: % de cada tamanho por perfil (MASC, FEM, KIDS…). Vazio = média das lojas pela verba. */
+  grade?: Record<string, Record<string, number>>;
+  /** % de cada tamanho por perfil só para uma loja: lojaId → perfil → tamanho → %. Manda sobre o de todas. */
+  gradeLoja?: Record<string, Record<string, Record<string, number>>>;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
   curva?: Record<string, number>;
   status: Fw27Status;
@@ -68,8 +81,64 @@ export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).
   subgrupo: (MAPA_SUBGRUPO[p.artigo] || p.pack || "OUTROS").toUpperCase(),
 }));
 
+/** Linha do produto (como no PDV): MASCULINA, FEMININA, INFANTO ou ACESSORIOS. */
+export function linhaDe(p: Pick<Fw27Produto, "tipo" | "genero" | "idade">): string {
+  if (/SOCK|BAG|CAP|BALL|BUCKET|HEADWEAR|TOWEL/i.test(p.tipo)) return "ACESSORIOS";
+  if (p.idade !== "ADULT" || /MINIKIT/i.test(p.tipo)) return "INFANTO";
+  return p.genero === "FEMALE" ? "FEMININA" : "MASCULINA";
+}
+
+/**
+ * Grupo do produto, pela descrição e pelo tipo da AMD: CAMISA TORCEDOR, CAMISA TORCEDOR FEM, CAMISA TORCEDOR INF,
+ * CAMISA PRO, FANSHIRT, CAMISETA, SHORT, JAQUETA… (fem/inf no fim, para comparar igual com igual).
+ */
+export function grupoDe(p: Pick<Fw27Produto, "descricao" | "tipo" | "genero" | "idade">): string {
+  const d = p.descricao.toUpperCase();
+  const t = p.tipo.toUpperCase();
+  let g: string;
+  if (/MINIKIT/.test(t) || /MINI KIT/.test(d)) return "MINI KIT";
+  if (/SOCK/.test(t) || /MEI[AÃ]O/.test(d)) g = / PRO\b/.test(d) ? "MEIÃO PRO" : "MEIÃO";
+  else if (/ARQUIBANCADA|FANSHIRT/.test(d)) g = "FANSHIRT";
+  else if (/CROPPED/.test(d)) g = "CROPPED";
+  else if (/JERSEY \(SHORT/.test(t) && / PRO\b/.test(d)) g = "CAMISA PRO";
+  else if (/JERSEY \(SHORT/.test(t) && /SPECIAL/.test(d)) g = "CAMISA SPECIAL";
+  else if (/JERSEY \(SHORT/.test(t) && /\b(RMX|OG)\b/.test(d)) g = "CAMISA ORIGINALS";
+  else if (/JERSEY \(SHORT/.test(t)) g = "CAMISA TORCEDOR";
+  else if (/SLEEVELESS|TANK/.test(t)) g = "REGATA";
+  else if (/T-SHIRT/.test(t)) g = "CAMISETA";
+  else if (/SHORTS/.test(t)) g = /BERMUDA/.test(d) ? "BERMUDA" : "SHORT";
+  else if (/JACKET/.test(t)) g = "JAQUETA";
+  else if (/PANTS/.test(t)) g = "CALÇA";
+  else if (/DRESS/.test(t)) g = "VESTIDO";
+  else g = t.split(" (")[0] || "OUTROS";
+  const l = linhaDe(p);
+  return l === "FEMININA" ? `${g} FEM` : l === "INFANTO" ? `${g} INF` : g;
+}
+
+// ---------------- Venda × estoque do produto equivalente de 2026 ----------------
+const VE = vendaEstoque as { periodo: string; refs: Record<string, string[]>; venda: Record<string, Record<string, Record<string, number>>>; estoque?: Record<string, Record<string, Record<string, number>>> };
+export const PERIODO_VENDA_ESTOQUE = VE.periodo;
+export const TEM_ESTOQUE = !!VE.estoque;
+/** Referências de 2026 usadas como comparação do artigo. */
+export const refsComparaveis = (artigo: string) => VE.refs?.[artigo] || [];
+const TAM_VE: Record<string, string> = { SM: "S", MD: "M", LG: "L", XXL: "2XL" };
+/** Venda e estoque (peças) do equivalente 2026 numa loja (ou na soma das lojas), num tamanho ou em todos. */
+export function vendaEstoqueDe(artigo: string, lojas: string[], tamanho?: string): { venda: number; estoque: number | null } {
+  const soma = (tab?: Record<string, Record<string, Record<string, number>>>) => {
+    let q = 0;
+    lojas.forEach((n) => {
+      const porTam = tab?.[artigo]?.[nomeBase(n)];
+      if (!porTam) return;
+      if (tamanho) q += porTam[TAM_VE[tamanho] || tamanho] || 0;
+      else Object.values(porTam).forEach((x) => { q += x; });
+    });
+    return q;
+  };
+  return { venda: soma(VE.venda), estoque: VE.estoque ? soma(VE.estoque) : null };
+}
+
 /** Ordem de exibição dos subgrupos; os que não estiverem aqui vão no fim. */
-const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
+const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE", "BUCKET"];
 
 export const SUBGRUPOS: string[] = (() => {
   const out: string[] = [];
@@ -145,7 +214,7 @@ export function dividir(total: number, pesos: number[]): number[] {
 // ---------------- Vendas do PDV (DBSleek) ----------------
 // src/data/fw27Vendas.json sai de scripts/vendas-para-json.py. Só percentuais, sem R$.
 
-export interface Fw27LojaBase { nome: string; gestor: string; codAdidas: string; pct: number }
+export interface Fw27LojaBase { nome: string; gestor: string; codAdidas: string; pct: number; pct90: number; venda: number }
 export const VENDAS = vendasPdv as {
   fonte: string; geradoEm: string;
   lojas: Fw27LojaBase[];
@@ -161,8 +230,43 @@ const LOJA_BASE = new Map(VENDAS.lojas.map((l) => [l.nome, l]));
 /** A loja na base de vendas (gestor, código, % das vendas), pelo nome. */
 export const lojaNaBase = (nome: string) => LOJA_BASE.get(nomeBase(nome));
 
+// ---------------- Verba ----------------
+/** Quanto a verba sugerida passa do vendido (jun–out/2026). */
+export const AUMENTO_VERBA = 0.1;
+
+/** Verba total sugerida: o que as lojas do pedido venderam em jun–out/2026 + 10%. */
+export function verbaSugerida(pedido: Fw27Pedido): number {
+  const vendido = pedido.lojas.reduce((a, l) => a + (lojaNaBase(l.nome)?.venda || 0), 0);
+  return Math.round(vendido * (1 + AUMENTO_VERBA));
+}
+/** Verba total em uso: a digitada ou a sugerida. */
+export const verbaTotalDe = (pedido: Fw27Pedido) => (pedido.verbaTotal !== undefined && pedido.verbaTotal !== null ? Number(pedido.verbaTotal) : verbaSugerida(pedido));
+
+/** % sugerido de cada loja: o peso dela nas vendas de ago–out/2026, entre as lojas do pedido (soma 100). */
+export function pctLojasSugerido(pedido: Fw27Pedido): Record<string, number> {
+  const pesos = pedido.lojas.map((l) => lojaNaBase(l.nome)?.pct90 || 0);
+  const soma = pesos.reduce((a, b) => a + b, 0);
+  const out: Record<string, number> = {};
+  pedido.lojas.forEach((l, i) => { out[l.id] = soma ? (pesos[i] / soma) * 100 : 0; });
+  return out;
+}
+/** % de cada loja em uso: o digitado ou o sugerido. */
+export function pctLojas(pedido: Fw27Pedido): Record<string, number> {
+  const sug = pctLojasSugerido(pedido);
+  const out: Record<string, number> = {};
+  pedido.lojas.forEach((l) => { out[l.id] = l.pct !== undefined && l.pct !== null ? Number(l.pct) : sug[l.id]; });
+  return out;
+}
+/** Pedido com a verba de cada loja = verba total × % da loja (o resto do app lê loja.verba). */
+export function aplicarVerbas(pedido: Fw27Pedido): Fw27Pedido {
+  const total = verbaTotalDe(pedido);
+  const pct = pctLojas(pedido);
+  return { ...pedido, lojas: pedido.lojas.map((l) => ({ ...l, verba: Math.round((total * (pct[l.id] || 0)) / 100) })) };
+}
+
 /** Perfil de grade do produto: masculino, feminino, infantil, mini ou meião. */
 export function perfilGrade(p: Fw27Produto): string {
+  if (p.tamanhos.length && p.tamanhos.every((t) => /^OSF/.test(t))) return "CABECA";
   if (/MEI[AÃ]O/i.test(p.descricao)) return "MEIAO";
   if (p.tamanhos.some((t) => ["1824", "2-3A", "3-4A", "4-5A", "6-7A"].includes(t))) return "MINI";
   if (p.idade !== "ADULT" || p.tamanhos.some((t) => ["7-8A", "910A", "1112", "1314", "1516"].includes(t))) return "KIDS";
@@ -180,20 +284,85 @@ function pesosMeio(p: Fw27Produto): number[] {
   });
 }
 
-/**
- * Peso de cada tamanho: o que a loja vendeu nesse perfil (masc, fem, infantil…) em 2025–2026.
- * Loja com pouca venda puxa para a grade geral; sem venda nenhuma, usa a grade geral.
- */
-export function pesosGrade(p: Fw27Produto, lojaNome?: string): number[] {
-  const tab = VENDAS.grade[perfilGrade(p)];
+// ---------------- Grade por tamanho ----------------
+export const PERFIS_GRADE: { id: string; nome: string }[] = [
+  { id: "MASC", nome: "Masculina" }, { id: "FEM", nome: "Feminina" }, { id: "KIDS", nome: "Infantil" },
+  { id: "MINI", nome: "Mini kit" }, { id: "MEIAO", nome: "Meião" }, { id: "CABECA", nome: "Boné / bucket" },
+];
+const ORDEM_TAM = ["1824", "2-3A", "3-4A", "4-5A", "5-6A", "6-7A", "7-8A", "910A", "1112", "1314", "1516", "KXL", "2XS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "OSFC", "OSFY", "OSFW", "OSFM", "OSFL"];
+const tamVenda = (t: string) => TAM_VENDA[t] || t;
+/** Tamanhos de cada perfil (os que existem nos produtos da AMD), em ordem. */
+export const TAMANHOS_PERFIL: Record<string, string[]> = (() => {
+  const out: Record<string, string[]> = {};
+  PRODUTOS.forEach((p) => { const k = perfilGrade(p); out[k] = Array.from(new Set([...(out[k] || []), ...p.tamanhos.map(tamVenda)])); });
+  Object.keys(out).forEach((k) => out[k].sort((a, b) => (ORDEM_TAM.indexOf(a) + 1 || 99) - (ORDEM_TAM.indexOf(b) + 1 || 99)));
+  return out;
+})();
+
+/** % de cada tamanho pelas vendas da loja (2025–2026); loja com pouca venda puxa para a geral. Soma 100. */
+export function gradeVendida(perfil: string, lojaNome?: string): Record<string, number> {
+  const tab = VENDAS.grade[perfil];
   const t = tab && ((lojaNome && tab[nomeBase(lojaNome)]) || tab._todas);
-  if (!t) return pesosMeio(p);
-  const pesos = p.tamanhos.map((x) => Number(t[TAM_VENDA[x] || x] || 0));
+  const tams = TAMANHOS_PERFIL[perfil] || [];
+  const pesos = tams.map((x) => Number(t?.[x] || 0));
+  const soma = pesos.reduce((a, b) => a + b, 0);
+  const out: Record<string, number> = {};
+  tams.forEach((x, i) => { out[x] = soma ? (pesos[i] / soma) * 100 : 100 / (tams.length || 1); });
+  return out;
+}
+
+/** Loja e pedido, para a grade levar em conta o que foi mexido na Representatividade. */
+export interface GradeCtx { pedido?: Fw27Pedido; loja?: Pick<Fw27Loja, "id" | "nome"> }
+
+/** Grade própria da loja: a mexida nela ou, se não, o que ela vendeu. */
+export function gradePropriaDaLoja(perfil: string, ctx: GradeCtx = {}): Record<string, number> {
+  return (ctx.loja && ctx.pedido?.gradeLoja?.[ctx.loja.id]?.[perfil]) || gradeVendida(perfil, ctx.loja?.nome);
+}
+/** Média das grades próprias das lojas do pedido, pesada pela verba. */
+export function gradeMedia(perfil: string, pedido?: Fw27Pedido): Record<string, number> {
+  const lojas = pedido?.lojas || [];
+  if (!lojas.length) return gradeVendida(perfil);
+  const tams = TAMANHOS_PERFIL[perfil] || [];
+  const somaV = lojas.reduce((a, l) => a + (Number(l.verba) || 0), 0);
+  const out: Record<string, number> = {};
+  tams.forEach((t) => { out[t] = 0; });
+  lojas.forEach((l) => {
+    const g = gradePropriaDaLoja(perfil, { pedido, loja: l });
+    const w = somaV ? (Number(l.verba) || 0) / somaV : 1 / lojas.length;
+    tams.forEach((t) => { out[t] += (g[t] || 0) * w; });
+  });
+  return out;
+}
+/** Grade única ligada? (pedido antigo com grade de todas mexida conta como ligada) */
+export const gradeUnicaLigada = (pedido?: Fw27Pedido) => (pedido?.gradeUnica ?? !!(pedido?.grade && Object.keys(pedido.grade).length));
+/** Grade de "todas as lojas": a digitada ou a média. */
+const cacheMedia = new WeakMap<Fw27Pedido, Record<string, Record<string, number>>>();
+export function gradeTodas(perfil: string, pedido?: Fw27Pedido): Record<string, number> {
+  if (pedido?.grade?.[perfil]) return pedido.grade[perfil];
+  if (!pedido) return gradeMedia(perfil);
+  // Média calculada uma vez por versão do pedido (o cálculo passa por ela para cada produto × loja).
+  let c = cacheMedia.get(pedido);
+  if (!c) { c = {}; cacheMedia.set(pedido, c); }
+  return (c[perfil] = c[perfil] || gradeMedia(perfil, pedido));
+}
+/** A loja segue a grade única? */
+export const segueGradeUnica = (pedido: Fw27Pedido | undefined, lojaId?: string) => gradeUnicaLigada(pedido) && !(lojaId && pedido?.gradePropria?.includes(lojaId));
+
+/** % de cada tamanho em uso na loja: a grade única (se ligada e a loja segue) ou a própria. */
+export function gradeDaLoja(perfil: string, ctx: GradeCtx = {}): Record<string, number> {
+  if (segueGradeUnica(ctx.pedido, ctx.loja?.id)) return gradeTodas(perfil, ctx.pedido);
+  return gradePropriaDaLoja(perfil, ctx);
+}
+
+/** Peso de cada tamanho do produto, pela grade da loja naquele perfil (masc, fem, infantil…). */
+export function pesosGrade(p: Fw27Produto, ctx: GradeCtx = {}): number[] {
+  const t = gradeDaLoja(perfilGrade(p), ctx);
+  const pesos = p.tamanhos.map((x) => Number(t[tamVenda(x)] || 0));
   return pesos.some((x) => x > 0) ? pesos : pesosMeio(p);
 }
 
-export function gradeDe(p: Fw27Produto, total: number, lojaNome?: string): Record<string, number> {
-  const qs = dividir(total, pesosGrade(p, lojaNome));
+export function gradeDe(p: Fw27Produto, total: number, ctx: GradeCtx = {}): Record<string, number> {
+  const qs = dividir(total, pesosGrade(p, ctx));
   const out: Record<string, number> = {};
   p.tamanhos.forEach((t, i) => { out[t] = qs[i]; });
   return out;
@@ -229,7 +398,7 @@ export function calcular(pedido: Fw27Pedido): Fw27Linha[] {
     pedido.lojas.forEach((l) => {
       const sugerido = sugeridoLoja(pedido, p, l, pct);
       const editada = pedido.itens[chaveItem(p.artigo, l.id)];
-      const grade = editada ? { ...gradeDe(p, 0), ...editada } : gradeDe(p, sugerido, l.nome);
+      const grade = editada ? { ...gradeDe(p, 0), ...editada } : gradeDe(p, sugerido, { pedido, loja: l });
       const k = chaveItem(p.artigo, l.id);
       const matriz = pedido.gradeEntrega?.[k];
       if (matriz) {
@@ -334,11 +503,18 @@ export function inicioCompra(p: { lancamento: string }): string {
   const min = p.lancamento.slice(0, 4) + PRIMEIRO_DIA_COMPRA;
   return p.lancamento < min ? min : p.lancamento;
 }
-/** Pode comprar nesta data? Só bloqueia antes do lançamento. */
+/**
+ * Pode comprar nesta data? No lançamento (ou 01/06) e depois só nos dias 01 e 15,
+ * com pelo menos 14 dias do lançamento — no máximo 2 entregas por mês.
+ * Ex.: lança 30/07 → 30/07, 15/08, 01/09…; lança 01/08 → 01/08, 15/08…
+ */
 export function podeComprar(p: { lancamento: string }, data: string): boolean {
-  return data >= inicioCompra(p) && data <= ULTIMA_DATA;
+  const inicio = inicioCompra(p);
+  if (data > ULTIMA_DATA || data < inicio) return false;
+  if (data === inicio) return true;
+  return dataRegular(data) && diasEntre(inicio, data) >= DIAS_MIN_ENTRE_ENTREGAS;
 }
-const DIAS_MIN_ENTRE_ENTREGAS = 7;
+const DIAS_MIN_ENTRE_ENTREGAS = 14;
 const PESO_EXTRA_LANCAMENTO = 1.5;
 
 const dataUTC = (iso: string) => new Date(iso + "T00:00:00Z");
@@ -347,10 +523,14 @@ const diasEntre = (a: string, b: string) => Math.round((dataUTC(b).getTime() - d
 const diasNoMes = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).getUTCDate();
 
 /** Curva padrão: vendas de 2026 (ano de Copa, parecido com 2027). Nov/2026 estimado. */
+/**
+ * Curva padrão de compra por mês, definida pelo Hugo (30/10) olhando venda × recebimento de 2026:
+ * venda jun 13 · jul 12 · ago 28 · set 20 · out 16 · nov 10 | recebimento 26 · 38 · 14 · 9 · 3 · 10.
+ */
+export const CURVA_SUGERIDA: Record<string, number> = { "06": 12, "07": 33, "08": 20, "09": 15, "10": 10, "11": 10 };
 export const curvaPadrao = (): Record<string, number> => {
   const out: Record<string, number> = {};
-  const ok = MESES_CURVA.some((m) => Number(VENDAS.curva?.[m]) > 0);
-  MESES_CURVA.forEach((m) => { out[m] = ok ? Number(VENDAS.curva[m] || 0) : 100 / MESES_CURVA.length; });
+  MESES_CURVA.forEach((m) => { out[m] = CURVA_SUGERIDA[m] ?? 0; });
   return out;
 };
 
@@ -469,9 +649,9 @@ export function gradePorEntrega(p: Fw27Produto, grade: Record<string, number>, e
 }
 
 /** Redistribui um total mantendo o formato de uma grade (editada ou não). */
-export function gradeProporcional(p: Fw27Produto, base: Record<string, number>, total: number, lojaNome?: string): Record<string, number> {
+export function gradeProporcional(p: Fw27Produto, base: Record<string, number>, total: number, ctx: GradeCtx = {}): Record<string, number> {
   const pesos = p.tamanhos.map((t) => Number(base[t] || 0));
-  if (!pesos.some((x) => x > 0)) return gradeDe(p, total, lojaNome);
+  if (!pesos.some((x) => x > 0)) return gradeDe(p, total, ctx);
   const qs = dividir(total, pesos);
   const out: Record<string, number> = {};
   p.tamanhos.forEach((t, i) => { out[t] = qs[i]; });

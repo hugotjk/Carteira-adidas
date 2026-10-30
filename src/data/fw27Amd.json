@@ -1,87 +1,5 @@
 [
  {
-  "artigo": "MA3765",
-  "descricao": "CAMISA FLAMENGO SPECIAL PROJECT WWC FEM",
-  "pack": "HOME REPLICA",
-  "tipo": "JERSEY (SHORT SLEEVE)",
-  "genero": "FEMALE",
-  "idade": "ADULT",
-  "tamanhos": [
-   "2XS",
-   "XS",
-   "S",
-   "M",
-   "L",
-   "XL",
-   "2XL"
-  ],
-  "lancamento": "2027-08-01",
-  "fim": "2027-11-30",
-  "preco": 399.99,
-  "carryOver": "TOTALLY NEW"
- },
- {
-  "artigo": "MA3766",
-  "descricao": "CAMISA FLAMENGO SPECIAL PROJECT WWC",
-  "pack": "HOME REPLICA",
-  "tipo": "JERSEY (SHORT SLEEVE)",
-  "genero": "MALE",
-  "idade": "ADULT",
-  "tamanhos": [
-   "XS",
-   "S",
-   "M",
-   "L",
-   "XL",
-   "2XL",
-   "3XL"
-  ],
-  "lancamento": "2027-08-01",
-  "fim": "2027-11-30",
-  "preco": 399.99,
-  "carryOver": "TOTALLY NEW"
- },
- {
-  "artigo": "MA3767",
-  "descricao": "CAMISA FLAMENGO SPECIAL PROJECT WWC INF",
-  "pack": "HOME REPLICA",
-  "tipo": "JERSEY (SHORT SLEEVE)",
-  "genero": "UNISEX",
-  "idade": "JUNIOR",
-  "tamanhos": [
-   "7-8A",
-   "910A",
-   "1112",
-   "1314",
-   "1516"
-  ],
-  "lancamento": "2027-08-01",
-  "fim": "2027-11-30",
-  "preco": 349.99,
-  "carryOver": "TOTALLY NEW"
- },
- {
-  "artigo": "MF9669",
-  "descricao": "SHORT FLAMENGO ICON",
-  "pack": "TERRACE ICONS",
-  "tipo": "SHORTS (1/2)",
-  "genero": "MALE",
-  "idade": "ADULT",
-  "tamanhos": [
-   "XS",
-   "S",
-   "M",
-   "L",
-   "XL",
-   "2XL",
-   "3XL"
-  ],
-  "lancamento": "2027-05-01",
-  "fim": "2027-11-30",
-  "preco": 379.99,
-  "carryOver": "TOTALLY NEW"
- },
- {
   "artigo": "KG0063",
   "descricao": "CAMISA FLAMENGO 3 CROPPED",
   "pack": "3 REPLICA",
@@ -97,7 +15,7 @@
    "XL",
    "2XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-07-30",
   "fim": "2027-11-30",
   "preco": 399.99,
   "carryOver": "TOTALLY NEW"
@@ -116,7 +34,7 @@
    "1314",
    "1516"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-07-30",
   "fim": "2027-11-30",
   "preco": 399.99,
   "carryOver": "TOTALLY NEW"
@@ -136,7 +54,7 @@
    "XL",
    "2XL"
   ],
-  "lancamento": "2027-06-01",
+  "lancamento": "2027-01-15",
   "fim": "2027-11-30",
   "preco": 899.99,
   "carryOver": "CARRY OVER"
@@ -317,7 +235,7 @@
    "5-6A",
    "6-7A"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-07-30",
   "fim": "2027-11-30",
   "preco": 499.99,
   "carryOver": "TOTALLY NEW"
@@ -338,7 +256,7 @@
    "2XL",
    "3XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 299.99,
   "carryOver": "TOTALLY NEW"
@@ -359,7 +277,7 @@
    "XL",
    "2XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 549.99,
   "carryOver": "TOTALLY NEW"
@@ -380,7 +298,7 @@
    "XL",
    "2XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 329.99,
   "carryOver": "TOTALLY NEW"
@@ -400,7 +318,7 @@
    "1314",
    "1516"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 299.99,
   "carryOver": "TOTALLY NEW"
@@ -420,7 +338,7 @@
    "1314",
    "1516"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 249.99,
   "carryOver": "TOTALLY NEW"
@@ -441,7 +359,7 @@
    "2XL",
    "3XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 329.99,
   "carryOver": "TOTALLY NEW"
@@ -462,7 +380,7 @@
    "2XL",
    "3XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 429.99,
   "carryOver": "TOTALLY NEW"
@@ -483,10 +401,29 @@
    "XL",
    "2XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-08-06",
   "fim": "2027-11-30",
   "preco": 299.99,
   "carryOver": "TOTALLY NEW"
+ },
+ {
+  "artigo": "KY3172",
+  "descricao": "CHAPÉU BUCKET CRF",
+  "pack": "-",
+  "tipo": "BUCKET",
+  "genero": "UNISEX",
+  "idade": "ADULT",
+  "tamanhos": [
+   "OSFC",
+   "OSFY",
+   "OSFW",
+   "OSFM",
+   "OSFL"
+  ],
+  "lancamento": "2026-12-01",
+  "fim": "2027-11-30",
+  "preco": 249.99,
+  "carryOver": "CARRY OVER"
  },
  {
   "artigo": "LD3710",
@@ -751,7 +688,7 @@
    "2XL",
    "3XL"
   ],
-  "lancamento": "2027-06-01",
+  "lancamento": "2027-01-15",
   "fim": "2027-11-30",
   "preco": 449.99,
   "carryOver": "CARRY OVER"
@@ -772,7 +709,7 @@
    "2XL",
    "3XL"
   ],
-  "lancamento": "2027-06-01",
+  "lancamento": "2027-04-09",
   "fim": "2027-11-30",
   "preco": 449.99,
   "carryOver": "CARRY OVER"
@@ -856,7 +793,7 @@
    "XL",
    "2XL"
   ],
-  "lancamento": "2027-08-01",
+  "lancamento": "2027-07-30",
   "fim": "2027-11-30",
   "preco": 449.99,
   "carryOver": "TOTALLY NEW"
@@ -1089,6 +1026,67 @@
   "carryOver": "TOTALLY NEW"
  },
  {
+  "artigo": "MA3762",
+  "descricao": "FLAMENGO ARQUIBANCADA 3",
+  "pack": "HOME FAN",
+  "tipo": "JERSEY (SHORT SLEEVE)",
+  "genero": "MALE",
+  "idade": "ADULT",
+  "tamanhos": [
+   "XS",
+   "S",
+   "M",
+   "L",
+   "XL",
+   "2XL",
+   "3XL"
+  ],
+  "lancamento": "2027-08-30",
+  "fim": "2027-11-30",
+  "preco": 229.99,
+  "carryOver": "TOTALLY NEW"
+ },
+ {
+  "artigo": "MA3763",
+  "descricao": "FLAMENGO ARQUIBANCADA 3 FEMININA",
+  "pack": "HOME FAN",
+  "tipo": "JERSEY (SHORT SLEEVE)",
+  "genero": "FEMALE",
+  "idade": "ADULT",
+  "tamanhos": [
+   "2XS",
+   "XS",
+   "S",
+   "M",
+   "L",
+   "XL",
+   "2XL"
+  ],
+  "lancamento": "2027-08-30",
+  "fim": "2027-11-30",
+  "preco": 229.99,
+  "carryOver": "TOTALLY NEW"
+ },
+ {
+  "artigo": "MA3764",
+  "descricao": "FLAMENGO ARQUIBANCADA 3 INFANTIL",
+  "pack": "HOME FAN",
+  "tipo": "JERSEY (SHORT SLEEVE)",
+  "genero": "UNISEX",
+  "idade": "JUNIOR",
+  "tamanhos": [
+   "7-8A",
+   "910A",
+   "1112",
+   "1314",
+   "1516"
+  ],
+  "lancamento": "2027-08-30",
+  "fim": "2027-11-30",
+  "preco": 199.99,
+  "carryOver": "TOTALLY NEW"
+ },
+ {
   "artigo": "ME2491",
   "descricao": "LC REGATA POLIAMIDA CRF M",
   "pack": "LC TRAINING - LOCAL CLUBS",
@@ -1213,10 +1211,10 @@
   "carryOver": "TOTALLY NEW"
  },
  {
-  "artigo": "MA3762",
-  "descricao": "FLAMENGO ARQUIBANCADA 3",
-  "pack": "HOME FAN",
-  "tipo": "JERSEY (SHORT SLEEVE)",
+  "artigo": "MF9669",
+  "descricao": "SHORT FLAMENGO ICON",
+  "pack": "TERRACE ICONS",
+  "tipo": "SHORTS (1/2)",
   "genero": "MALE",
   "idade": "ADULT",
   "tamanhos": [
@@ -1228,49 +1226,9 @@
    "2XL",
    "3XL"
   ],
-  "lancamento": "2027-08-30",
+  "lancamento": "2027-05-01",
   "fim": "2027-11-30",
-  "preco": 229.99,
-  "carryOver": "TOTALLY NEW"
- },
- {
-  "artigo": "MA3763",
-  "descricao": "FLAMENGO ARQUIBANCADA 3 FEMININA",
-  "pack": "HOME FAN",
-  "tipo": "JERSEY (SHORT SLEEVE)",
-  "genero": "FEMALE",
-  "idade": "ADULT",
-  "tamanhos": [
-   "2XS",
-   "XS",
-   "S",
-   "M",
-   "L",
-   "XL",
-   "2XL"
-  ],
-  "lancamento": "2027-08-30",
-  "fim": "2027-11-30",
-  "preco": 229.99,
-  "carryOver": "TOTALLY NEW"
- },
- {
-  "artigo": "MA3764",
-  "descricao": "FLAMENGO ARQUIBANCADA 3 INFANTIL",
-  "pack": "HOME FAN",
-  "tipo": "JERSEY (SHORT SLEEVE)",
-  "genero": "UNISEX",
-  "idade": "JUNIOR",
-  "tamanhos": [
-   "7-8A",
-   "910A",
-   "1112",
-   "1314",
-   "1516"
-  ],
-  "lancamento": "2027-08-30",
-  "fim": "2027-11-30",
-  "preco": 199.99,
+  "preco": 379.99,
   "carryOver": "TOTALLY NEW"
  }
 ]
