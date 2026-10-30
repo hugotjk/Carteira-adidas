@@ -626,14 +626,20 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
 const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"] }> = ({ pedido, atualizar }) => {
   // Mesmo acesso do resto do app: master/ALL vê todas; GESTOR vê as lojas dos seus gestores; LOJA só as suas lojas.
   const { user, userProfile } = useAuth();
+  const { allOrders } = useData();
   const visiveis = React.useMemo(() => {
     const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
     if (tudo) return VENDAS.lojas;
     const v = new Set(((userProfile?.accessValues as string[]) || []).map((x) => String(x).toUpperCase().trim()));
-    if (userProfile?.accessType === "GESTOR") return VENDAS.lojas.filter((l) => v.has(l.gestor.toUpperCase()));
-    if (userProfile?.accessType === "LOJA") { const ns = new Set(Array.from(v).map(nomeBase)); return VENDAS.lojas.filter((l) => ns.has(l.nome)); }
-    return [];
-  }, [user?.email, userProfile]);
+    // Lojas que o login já enxerga na carteira (vale para qualquer tipo de acesso: gestor, loja, grupo, customer).
+    const daCarteira = new Set((allOrders || []).map((o: any) => nomeBase(String(o.loja || ""))));
+    const tipo = userProfile?.accessType;
+    return VENDAS.lojas.filter((l) =>
+      daCarteira.has(l.nome)
+      || (tipo === "GESTOR" && v.has(l.gestor.toUpperCase()))
+      || (tipo === "LOJA" && Array.from(v).some((x) => nomeBase(x) === l.nome))
+      || (tipo === "CUSTOMER" && !!l.codAdidas && v.has(l.codAdidas)));
+  }, [user?.email, userProfile, allOrders]);
   const gestores = React.useMemo(() => Array.from(new Set(visiveis.map((l) => l.gestor).filter(Boolean))).sort(), [visiveis]);
   const [gestor, setGestor] = React.useState("TODOS");
   const noPedido = new Set(pedido.lojas.map((l) => nomeBase(l.nome)));
