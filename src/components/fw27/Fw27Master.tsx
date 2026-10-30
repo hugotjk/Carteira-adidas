@@ -20,10 +20,10 @@ import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
+  { id: "indicadores", label: "Indicadores", icon: Activity },
   { id: "representatividade", label: "Representatividade por Loja", icon: Store },
   { id: "sugestao", label: "Sugestão", icon: Lightbulb },
   { id: "resumo", label: "Resumo", icon: ClipboardList },
-  { id: "indicadores", label: "Indicadores", icon: Activity },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -165,13 +165,12 @@ const Fw27Master: React.FC = () => {
   const { pedido: pedidoSalvo, atualizar, estado, erro, salvoEm } = useFw27Pedido(user?.uid);
   // Verba de cada loja = verba total × % da loja (sugeridos quando não digitados).
   const pedido = React.useMemo(() => aplicarVerbas(pedidoSalvo), [pedidoSalvo]);
-  const [active, setActive] = React.useState<SectionId>("representatividade");
+  const [active, setActive] = React.useState<SectionId>("resumos");
   const linhas = React.useMemo(() => calcular(pedido), [pedido]);
   const tot = React.useMemo(() => totais(pedido, linhas), [pedido, linhas]);
   const travado = pedido.status === "enviado";
   const semLojas = pedido.lojas.length === 0;
 
-  React.useEffect(() => { if (estado === "salvo" && semLojas) setActive("representatividade"); }, [estado, semLojas]);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden pb-12">
@@ -198,8 +197,8 @@ const Fw27Master: React.FC = () => {
         {erro && <p className="text-[10px] text-amber-700 mt-3">{erro}</p>}
       </div>
 
-      <div className={cn("p-4 md:p-6 space-y-4 w-full mx-auto", active === "sugestao" ? "max-w-[112rem]" : "max-w-5xl")}>
-        <div className={cn("grid grid-cols-2 md:grid-cols-5 gap-2", active === "sugestao" && "max-w-5xl mx-auto")}>
+      <div className="p-4 md:p-6 space-y-4 w-full mx-auto max-w-[112rem]">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
           {SECTIONS.map((s) => (
             <button
               key={s.id} onClick={() => setActive(s.id)}
@@ -218,7 +217,7 @@ const Fw27Master: React.FC = () => {
           <Card className="py-16 flex justify-center"><Loader2 className="animate-spin text-gray-300" /></Card>
         ) : (
           <>
-            {active === "resumos" && <ResumosTab linhas={linhas} tot={tot} />}
+            {active === "resumos" && <ResumosTab pedido={pedido} linhas={linhas} tot={tot} onIr={setActive} />}
             {active === "representatividade" && <ReprTab pedido={pedido} atualizar={atualizar} tot={tot} travado={travado} />}
             {active === "sugestao" && (semLojas
               ? <SemLojas onIr={() => setActive("representatividade")} />
@@ -244,77 +243,211 @@ const SemLojas: React.FC<{ onIr: () => void }> = ({ onIr }) => (
 
 // ============================ RESUMOS FW27 ============================
 
-const ResumosTab: React.FC<{ linhas: Fw27Linha[]; tot: ReturnType<typeof totais> }> = ({ linhas, tot }) => {
-  // CARRY OVER = já comprado no SS27; o resto (TOTALLY NEW e NEW COLOR da AMD) é novo.
+const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: ReturnType<typeof totais>; onIr: (s: SectionId) => void }> = ({ pedido, linhas, tot, onIr }) => {
   const co = PRODUTOS.filter((p) => p.carryOver === "CARRY OVER").length;
   const novos = PRODUTOS.length - co;
-  const porEntrega = LANCAMENTOS.map((d) => {
-    const ps = PRODUTOS.filter((p) => p.lancamento === d);
-    const ls = linhas.filter((x) => x.produto.lancamento === d);
-    return { d, ps, pecas: ls.reduce((a, x) => a + x.qtd, 0) };
-  });
+  const verba = verbaTotalDe(pedido);
+  const nomes = pedido.lojas.map((l) => l.nome);
+  const vendido = pedido.lojas.reduce((a, l) => a + (lojaNaBase(l.nome)?.venda || 0), 0);
   const datasComPeca = Object.keys(somaPorData(linhas)).sort();
   const meses = somaPorMes(somaPorData(linhas));
   const maxMes = Math.max(1, ...meses.map((m) => m.q));
-  const maxPack = Math.max(1, ...SUBGRUPOS.map((pk) => tot.porPack[pk]?.pecas || 0));
+
+  // Peças no pedido e peças vendidas em 2026 dos equivalentes, por produto (base dos mixes).
+  const porProduto = React.useMemo(() => PRODUTOS.map((p) => {
+    const ls = linhas.filter((x) => x.produto.artigo === p.artigo);
+    return { p, q: ls.reduce((a, x) => a + x.qtd, 0), valor: ls.reduce((a, x) => a + x.valor, 0), venda: vendaEstoqueDe(p.artigo, nomes).venda };
+  }), [linhas, nomes.join("|")]);
+
+  // Curva ABC pelo valor do pedido: A até 80%, B até 95%, C o resto.
+  const abc = React.useMemo(() => {
+    const ord = porProduto.filter((x) => x.valor > 0).sort((a, b) => b.valor - a.valor);
+    const total = ord.reduce((a, x) => a + x.valor, 0) || 1;
+    let acum = 0;
+    return ord.map((x) => { const antes = acum; acum += x.valor; return { ...x, classe: antes / total < 0.8 ? "A" : antes / total < 0.95 ? "B" : "C", pct: (x.valor / total) * 100 }; });
+  }, [porProduto]);
+  const [abcAberto, setAbcAberto] = React.useState<string | null>("A");
+
+  const mix = (de: (p: Fw27Produto) => string, ordem?: string[]) => {
+    const m = new Map<string, { q: number; v: number }>();
+    porProduto.forEach(({ p, q, venda }) => { const k = de(p); const g = m.get(k) || { q: 0, v: 0 }; g.q += q; g.v += venda; m.set(k, g); });
+    const tq = Array.from(m.values()).reduce((a, g) => a + g.q, 0) || 1;
+    const tv = Array.from(m.values()).reduce((a, g) => a + g.v, 0) || 1;
+    const out = Array.from(m.entries()).map(([k, g]) => ({ k, ped: (g.q / tq) * 100, ven: (g.v / tv) * 100 }));
+    return ordem ? out.sort((a, b) => ordem.indexOf(a.k) - ordem.indexOf(b.k)) : out.sort((a, b) => b.ped - a.ped);
+  };
+  const divisao = (p: Fw27Produto) =>
+    ["HOME", "AWAY", "THIRD", "FANSHIRT"].includes(p.subgrupo) ? "Linha de jogo"
+    : p.subgrupo === "ICON" ? "Bringbacks (Icon)"
+    : p.subgrupo === "TIROTECH" ? "Tiro Tech"
+    : ["ORIGINALS", "GRAPHIC"].includes(p.subgrupo) ? "OG / Graphic" : "Outros";
+  const faixa = (p: Fw27Produto) => (p.preco < 250 ? "Entrada (até R$ 249)" : p.preco < 500 ? "Intermediário (R$ 250–499)" : "Premium (R$ 500+)");
+  const nomeLinha: Record<string, string> = { MASCULINA: "Masculino", FEMININA: "Feminino", INFANTO: "Infantil", ACESSORIOS: "Acessórios" };
+  const mixes = [
+    { t: "Por público", d: mix((p) => nomeLinha[linhaDe(p)] || linhaDe(p), ["Masculino", "Feminino", "Infantil", "Acessórios"]) },
+    { t: "Por divisão", d: mix(divisao, ["Linha de jogo", "Tiro Tech", "Bringbacks (Icon)", "OG / Graphic", "Outros"]) },
+    { t: "Por faixa de preço", d: mix(faixa, ["Entrada (até R$ 249)", "Intermediário (R$ 250–499)", "Premium (R$ 500+)"]) },
+  ];
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over (SS27)`} />
-        <Kpi label="Peças no pedido" value={n0(tot.pecas)} />
-        <Kpi label="Valor a PDV" value={brl(tot.valor)} sub={tot.verba ? `verba ${brl(tot.verba)}` : "sem verba ainda"} />
-        <Kpi label="Datas de entrega" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(datasComPeca[0])} a ${diaMes(datasComPeca[datasComPeca.length - 1])}` : "lançamento, 01 e 15"} />
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+        <Kpi label="Verba total" value={brl(verba)} sub={pedido.lojas.length ? `${pedido.lojas.length} lojas` : "sem lojas ainda"} />
+        <Kpi label="No pedido (PDV)" value={brl(tot.valor)} sub={verba ? `${pct1((tot.valor / verba) * 100)} da verba` : "—"} />
+        <Kpi label="Peças" value={n0(tot.pecas)} />
+        <Kpi label="vs venda jun–out/26" value={vendido ? `${tot.valor >= vendido ? "+" : "−"}${pct1(Math.abs((tot.valor / vendido - 1) * 100))}` : "—"} sub={vendido ? `vendido ${brl(vendido)}` : "lojas sem venda"} />
+        <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over`} />
+        <Kpi label="Entregas" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(datasComPeca[0])} a ${diaMes(datasComPeca[datasComPeca.length - 1])}` : "jun a nov"} />
       </div>
-      {meses.length > 0 && (
-        <Card>
+
+      {!pedido.lojas.length && (
+        <Card className="flex items-center justify-between gap-3">
+          <span className="text-xs font-bold text-gray-600">Comece cadastrando as lojas e a verba.</span>
+          <button onClick={() => onIr("representatividade")} className="h-9 px-3 rounded-xl bg-black text-white text-[11px] font-black shrink-0">Ir para Representatividade</button>
+        </Card>
+      )}
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-1">
+          <h3 className="text-sm font-extrabold mb-2">Avisos da coleção</h3>
+          <ul className="space-y-2 text-[11px] text-gray-600">
+            {AVISOS.map(([t, d]) => (
+              <li key={t} className="flex gap-2"><span className="w-1.5 h-1.5 rounded-full bg-black mt-1.5 shrink-0" /><span><span className="font-extrabold text-gray-900">{t}: </span>{d}</span></li>
+            ))}
+          </ul>
+        </Card>
+        <Card className="lg:col-span-2">
           <h3 className="text-sm font-extrabold mb-3">Peças por mês de entrega</h3>
-          {meses.map((m) => (
+          {meses.length ? meses.map((m) => (
             <div key={m.mes} className="grid grid-cols-[5.5rem_1fr_4.5rem] gap-2 items-center py-1">
               <div className="text-[11px] font-extrabold">{NOME_MES[m.mes] || m.mes}</div>
               <div className="h-2 bg-gray-100 rounded"><div className="h-2 bg-black rounded" style={{ width: `${(m.q / maxMes) * 100}%` }} /></div>
               <div className="text-[11px] font-extrabold text-right">{n0(m.q)}</div>
             </div>
-          ))}
+          )) : <p className="text-[11px] text-gray-400">Sem peças no pedido ainda.</p>}
         </Card>
-      )}
-      <Card>
-        <h3 className="text-sm font-extrabold mb-3">Calendário de lançamentos</h3>
-        <div className="space-y-3">
-          {porEntrega.map(({ d, ps, pecas }) => (
-            <div key={d} className="flex gap-3">
-              <div className="w-16 shrink-0">
-                <div className="text-xs font-black">{diaMes(d)}</div>
-                <div className="text-[10px] font-bold text-gray-400">{mesDe(d)} · {ps.length} refs</div>
-                <div className="text-[10px] font-bold text-gray-500">{n0(pecas)} pçs</div>
-              </div>
-              <div className="flex flex-wrap gap-1.5 min-w-0">
-                {ps.map((p) => (
-                  <span key={p.artigo} title={p.descricao} className="text-[10px] font-bold bg-gray-50 rounded-lg px-2 py-1">
-                    {p.artigo} <span className="text-gray-400 font-semibold">{p.subgrupo}</span>
-                  </span>
-                ))}
-              </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        {mixes.map(({ t, d }) => (
+          <Card key={t}>
+            <h3 className="text-sm font-extrabold">{t}</h3>
+            <div className="flex gap-3 text-[9px] font-bold text-gray-500 mt-1 mb-2">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-black rounded-sm" /> pedido</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-300 rounded-sm" /> venda 2026 (equivalentes)</span>
             </div>
-          ))}
-        </div>
-      </Card>
+            {d.map((x) => (
+              <div key={x.k} className="py-1.5">
+                <div className="flex justify-between text-[10px] font-extrabold"><span>{x.k}</span><span>{pct1(x.ped)} <span className="text-gray-400">· {pct1(x.ven)}</span></span></div>
+                <div className="h-1.5 bg-gray-100 rounded mt-1"><div className="h-1.5 bg-black rounded" style={{ width: `${x.ped}%` }} /></div>
+                <div className="h-1.5 bg-gray-100 rounded mt-0.5"><div className="h-1.5 bg-gray-300 rounded" style={{ width: `${x.ven}%` }} /></div>
+              </div>
+            ))}
+            <p className="text-[9px] text-gray-400 mt-1">% das peças.</p>
+          </Card>
+        ))}
+      </div>
+
       <Card>
-        <h3 className="text-sm font-extrabold mb-3">Por subgrupo</h3>
-        {SUBGRUPOS.map((pk) => {
-          const refs = PRODUTOS.filter((p) => p.subgrupo === pk).length;
-          const pc = tot.porPack[pk]?.pecas || 0;
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-extrabold">Curva ABC do pedido</h3>
+            <p className="text-[10px] text-gray-400">Pelo valor no pedido: A = produtos que somam 80% do valor (aposta forte), B = os próximos 15%, C = o resto (teste).</p>
+          </div>
+          <div className="flex gap-1.5">
+            {(["A", "B", "C"] as const).map((c) => {
+              const it = abc.filter((x) => x.classe === c);
+              return (
+                <button key={c} onClick={() => setAbcAberto(abcAberto === c ? null : c)}
+                  className={cn("rounded-xl border px-3 py-1.5 text-left", abcAberto === c ? "bg-black text-white border-black" : "bg-white border-gray-200")}>
+                  <div className="text-xs font-black">{c} · {it.length} refs</div>
+                  <div className={cn("text-[9px] font-bold", abcAberto === c ? "text-gray-300" : "text-gray-400")}>{pct1(it.reduce((a, x) => a + x.pct, 0))} do valor</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {abc.length > 0 && (() => {
+          // Por subgrupo: quanto do valor do pedido está em produtos A, B e C.
+          const cores: Record<string, string> = { A: "bg-black", B: "bg-gray-500", C: "bg-gray-300" };
+          const subs = SUBGRUPOS.map((sg) => {
+            const it = abc.filter((x) => x.p.subgrupo === sg);
+            const v = (c: string) => it.filter((x) => x.classe === c).reduce((a, x) => a + x.valor, 0);
+            return { sg, A: v("A"), B: v("B"), C: v("C"), n: { A: it.filter((x) => x.classe === "A").length, B: it.filter((x) => x.classe === "B").length, C: it.filter((x) => x.classe === "C").length }, tot: it.reduce((a, x) => a + x.valor, 0) };
+          }).filter((x) => x.tot > 0).sort((a, b) => b.tot - a.tot);
+          const max = Math.max(1, ...subs.map((x) => x.tot));
           return (
-            <div key={pk} className="grid grid-cols-[minmax(0,10rem)_1fr_4rem] gap-2 items-center py-1.5">
-              <div className="text-[10px] font-extrabold uppercase truncate">{pk} <span className="text-gray-400">· {refs}</span></div>
-              <div className="h-2 bg-gray-100 rounded"><div className="h-2 bg-black rounded" style={{ width: `${(pc / maxPack) * 100}%` }} /></div>
-              <div className="text-[11px] font-extrabold text-right">{n0(pc)}</div>
+            <div className="mt-4">
+              <div className="flex gap-3 text-[9px] font-bold text-gray-500 mb-2">
+                {(["A", "B", "C"] as const).map((c) => <span key={c} className="flex items-center gap-1"><span className={cn("w-2.5 h-2.5 rounded-sm", cores[c])} /> {c}</span>)}
+                <span>valor no pedido por subgrupo</span>
+              </div>
+              {subs.map((x) => (
+                <div key={x.sg} className="grid grid-cols-[7rem_1fr_9rem] gap-2 items-center py-1">
+                  <span className="text-[10px] font-extrabold uppercase truncate">{x.sg}</span>
+                  <div className="flex h-3 rounded overflow-hidden bg-gray-50" style={{ width: `${(x.tot / max) * 100}%` }}>
+                    {(["A", "B", "C"] as const).map((c) => x[c] > 0 && (
+                      <div key={c} className={cores[c]} style={{ width: `${(x[c] / x.tot) * 100}%` }} title={`${c}: ${x.n[c]} refs · ${brl(x[c])}`} />
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-500 text-right">{brl(x.tot)} · {x.n.A}A {x.n.B}B {x.n.C}C</span>
+                </div>
+              ))}
             </div>
           );
-        })}
+        })()}
+        {abcAberto && (
+          <div className="mt-3 grid md:grid-cols-2 gap-x-6">
+            {abc.filter((x) => x.classe === abcAberto).map((x) => (
+              <div key={x.p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-1 border-t border-gray-50">
+                <span className="truncate">{x.p.artigo} · {x.p.descricao} <span className="text-gray-400 font-bold">· {x.p.subgrupo}</span></span>
+                <span className="shrink-0"><span className="font-extrabold text-gray-900">{n0(x.q)} pçs</span> · {brl(x.valor)} · {pct1(x.pct)}</span>
+              </div>
+            ))}
+            {!abc.length && <p className="text-[11px] text-gray-400">Sem peças no pedido ainda.</p>}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <h3 className="text-sm font-extrabold mb-3">Calendário de lançamentos</h3>
+        <div className="grid md:grid-cols-2 gap-x-6 gap-y-3">
+          {LANCAMENTOS.map((d) => {
+            const ps = PRODUTOS.filter((p) => p.lancamento === d);
+            const pecas = linhas.filter((x) => x.produto.lancamento === d).reduce((a, x) => a + x.qtd, 0);
+            return (
+              <div key={d} className="flex gap-3">
+                <div className="w-16 shrink-0">
+                  <div className="text-xs font-black">{diaMes(d)}</div>
+                  <div className="text-[10px] font-bold text-gray-400">{mesDe(d)} · {ps.length} refs</div>
+                  <div className="text-[10px] font-bold text-gray-500">{n0(pecas)} pçs</div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 min-w-0">
+                  {ps.map((p) => (
+                    <span key={p.artigo} title={p.descricao} className="text-[10px] font-bold bg-gray-50 rounded-lg px-2 py-1">
+                      {p.artigo} <span className="text-gray-400 font-semibold">{p.subgrupo}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </Card>
     </div>
   );
 };
+
+/** Avisos da coleção (vindos da adidas / do comercial). */
+const AVISOS: [string, string][] = [
+  ["Compra", "entregas de junho a novembro de 2027"],
+  ["Prazo de digitação", "15/11/2026"],
+  ["Cancelamento de carteira", "limite de 5% por coleção"],
+  ["Grade", "ajustada por loja, pela venda de cada uma"],
+  ["Preços", "camisa de jogo volta para R$ 449,99 e cropped para R$ 399,99"],
+  ["Linha OG", "linha de viagem dos jogadores no 2º semestre"],
+  ["Verba", "respeitar a capacidade financeira da loja, não só o potencial de venda"],
+];
 
 // ======================== REPRESENTATIVIDADE ========================
 
@@ -1246,6 +1379,12 @@ const INDICADORES: Indicador[] = [
     aconteceu: "Medida provisória restringe publicidade e patrocínio de bets. O governo informou que vender camisas já produzidas com a marca não é nova propaganda.",
     medido: "Em 2026 a Third masculina só existiu com Betano (17% da venda da rede).", efeito: "neutro",
     ajustar: "Mix da torcedor masculina",
+  },
+  {
+    tipo: "Produto", titulo: "Camisas com Betano em promoção", quando: "set–out/2026",
+    aconteceu: "As versões com patrocínio entraram em promoção. A Third 2026 (lançada em julho) só existiu com Betano.",
+    medido: "Preço médio da Third c/ Betano: R$ 446 em ago → R$ 332 em out. Home e Away c/ Betano: ~R$ 445 → ~R$ 320. As versões sem patrocínio ficaram em ~R$ 443.", efeito: "alta",
+    ajustar: "Quantidade da torcedor III",
   },
   {
     tipo: "Produto", titulo: "Preço da Pro (antiga Authentic)", quando: "FW27",
