@@ -5,7 +5,8 @@ Gera src/data/fw27VendaEstoque.json, usado na Sugestão (coluna "Venda × Estoqu
 Uso:
   python3 scripts/vendaestoque-para-json.py <pasta com VENDAS_MES_DBSLEEK.csv> [ESTOQUE.csv]
 
-ESTOQUE.csv (opcional): colunas LOJA, REFERENCIA_FORNECEDOR, TAMANHO, ESTOQUE (peças hoje).
+ESTOQUE.csv (opcional): colunas LOJA, REFERENCIA_FORNECEDOR, TAMANHO, ESTOQUE (peças hoje; negativo vira 0).
+Sai do DBSleek: =DBSLEEK("SOMA","DBASE.BIN","ESTOQUE","PECAS","MODELO","=","ADIDAS FLA") + CTRL+E.
 Venda = peças vendidas jun–out/2026 (o que temos no banco).
 """
 import json, re, sys, unicodedata
@@ -78,8 +79,10 @@ v = v[(v.MES >= "2026-06") & (v.MES <= "2026-10")]
 saida = {"periodo": "venda jun–out/2026", "refs": REFS, "venda": tabela(v, "PECAS")}
 if len(sys.argv) > 2:
     e = pd.read_csv(sys.argv[2], dtype={"TAMANHO": str})
+    # Estoque negativo (venda sem entrada no sistema) conta como zero.
+    e["ESTOQUE"] = e.ESTOQUE.clip(lower=0)
     saida["estoque"] = tabela(e, "ESTOQUE")
-    saida["periodo"] += " · estoque " + Path(sys.argv[2]).stem
+    saida["periodo"] += " · estoque em " + (sys.argv[3] if len(sys.argv) > 3 else Path(sys.argv[2]).stem)
 destino = Path(__file__).resolve().parent.parent / "src" / "data" / "fw27VendaEstoque.json"
 json.dump(saida, open(destino, "w"), ensure_ascii=False, separators=(",", ":"))
 print(destino, destino.stat().st_size, "bytes;", len(saida["venda"]), "artigos com venda")
