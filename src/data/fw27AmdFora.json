@@ -1,0 +1,87 @@
+{
+ "_leia": "Artigos da AMD que NÃO entram no app. Para voltar um artigo, tire daqui e rode scripts/amd-para-json.mjs. Os do SPECIAL guardam os dados da AMD de 23/10 (subgrupo SPECIAL).",
+ "fora": {
+  "LY3626": {
+   "motivo": "PROMO não entra no app"
+  },
+  "LY3630": {
+   "motivo": "PROMO não entra no app"
+  },
+  "KG4975": {
+   "motivo": "PROMO não entra no app"
+  },
+  "MA3766": {
+   "motivo": "SPECIAL saiu da AMD 30/10 (pode voltar)",
+   "subgrupo": "SPECIAL",
+   "amd": {
+    "artigo": "MA3766",
+    "descricao": "CAMISA FLAMENGO SPECIAL PROJECT WWC",
+    "pack": "HOME REPLICA",
+    "tipo": "JERSEY (SHORT SLEEVE)",
+    "genero": "MALE",
+    "idade": "ADULT",
+    "tamanhos": [
+     "XS",
+     "S",
+     "M",
+     "L",
+     "XL",
+     "2XL",
+     "3XL"
+    ],
+    "lancamento": "2027-08-01",
+    "fim": "2027-11-30",
+    "preco": 399.99,
+    "carryOver": "TOTALLY NEW"
+   }
+  },
+  "MA3765": {
+   "motivo": "SPECIAL saiu da AMD 30/10 (pode voltar)",
+   "subgrupo": "SPECIAL",
+   "amd": {
+    "artigo": "MA3765",
+    "descricao": "CAMISA FLAMENGO SPECIAL PROJECT WWC FEM",
+    "pack": "HOME REPLICA",
+    "tipo": "JERSEY (SHORT SLEEVE)",
+    "genero": "FEMALE",
+    "idade": "ADULT",
+    "tamanhos": [
+     "2XS",
+     "XS",
+     "S",
+     "M",
+     "L",
+     "XL",
+     "2XL"
+    ],
+    "lancamento": "2027-08-01",
+    "fim": "2027-11-30",
+    "preco": 399.99,
+    "carryOver": "TOTALLY NEW"
+   }
+  },
+  "MA3767": {
+   "motivo": "SPECIAL saiu da AMD 30/10 (pode voltar)",
+   "subgrupo": "SPECIAL",
+   "amd": {
+    "artigo": "MA3767",
+    "descricao": "CAMISA FLAMENGO SPECIAL PROJECT WWC INF",
+    "pack": "HOME REPLICA",
+    "tipo": "JERSEY (SHORT SLEEVE)",
+    "genero": "UNISEX",
+    "idade": "JUNIOR",
+    "tamanhos": [
+     "7-8A",
+     "910A",
+     "1112",
+     "1314",
+     "1516"
+    ],
+    "lancamento": "2027-08-01",
+    "fim": "2027-11-30",
+    "preco": 349.99,
+    "carryOver": "TOTALLY NEW"
+   }
+  }
+ }
+}

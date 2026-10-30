@@ -2,7 +2,7 @@ import React from "react";
 import * as XLSX from "xlsx-js-style";
 import {
   Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Plus, Trash2, ChevronDown, ChevronUp,
-  Download, Lock, Unlock, RotateCcw, X, Cloud, CloudOff, Loader2, Search, EyeOff,
+  Download, Lock, Unlock, RotateCcw, X, Cloud, CloudOff, Loader2, Search, EyeOff, Activity, TrendingDown, TrendingUp, Minus,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../context/AuthContext";
@@ -14,7 +14,7 @@ import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27R
 import {
   aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido, AUMENTO_VERBA,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
+  vendaEstoqueDe, refsComparaveis, PERIODO_VENDA_ESTOQUE, PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
@@ -23,6 +23,7 @@ const SECTIONS = [
   { id: "representatividade", label: "Representatividade por Loja", icon: Store },
   { id: "sugestao", label: "Sugestão", icon: Lightbulb },
   { id: "resumo", label: "Resumo", icon: ClipboardList },
+  { id: "indicadores", label: "Indicadores", icon: Activity },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -116,6 +117,19 @@ const NumInput: React.FC<{
   );
 };
 
+/** Venda (verde) × estoque (vermelho) do produto equivalente de 2026. */
+const VendaEst: React.FC<{ artigo: string; lojas: string[]; tamanho?: string; pequeno?: boolean }> = ({ artigo, lojas, tamanho, pequeno }) => {
+  if (!refsComparaveis(artigo).length) return <span className="text-[9px] text-gray-300 font-bold" title="Sem produto equivalente em 2026">s/ comp.</span>;
+  const { venda, estoque } = vendaEstoqueDe(artigo, lojas, tamanho);
+  return (
+    <span className={cn("font-extrabold whitespace-nowrap", pequeno ? "text-[10px]" : "text-[11px]")} title={`Equivalente 2026: ${refsComparaveis(artigo).join(", ")} — ${PERIODO_VENDA_ESTOQUE}`}>
+      <span className="text-emerald-600">{n0(venda)}</span>
+      <span className="text-gray-300 mx-0.5">×</span>
+      <span className="text-red-500">{estoque === null ? "–" : n0(estoque)}</span>
+    </span>
+  );
+};
+
 /** Diferença entre o % atual e o sugerido, com cor. */
 const Desvio: React.FC<{ atual: number; sugerido: number }> = ({ atual, sugerido }) => {
   const d = atual - sugerido;
@@ -185,7 +199,7 @@ const Fw27Master: React.FC = () => {
       </div>
 
       <div className={cn("p-4 md:p-6 space-y-4 w-full mx-auto", active === "sugestao" ? "max-w-[112rem]" : "max-w-5xl")}>
-        <div className={cn("grid grid-cols-2 md:grid-cols-4 gap-2", active === "sugestao" && "max-w-5xl mx-auto")}>
+        <div className={cn("grid grid-cols-2 md:grid-cols-5 gap-2", active === "sugestao" && "max-w-5xl mx-auto")}>
           {SECTIONS.map((s) => (
             <button
               key={s.id} onClick={() => setActive(s.id)}
@@ -209,6 +223,7 @@ const Fw27Master: React.FC = () => {
             {active === "sugestao" && (semLojas
               ? <SemLojas onIr={() => setActive("representatividade")} />
               : <SugestaoTab pedido={pedido} atualizar={atualizar} linhas={linhas} tot={tot} travado={travado} imageMap={imageMap} />)}
+            {active === "indicadores" && <IndicadoresTab onIr={setActive} />}
             {active === "resumo" && (semLojas
               ? <SemLojas onIr={() => setActive("representatividade")} />
               : <ResumoTab pedido={pedido} atualizar={atualizar} linhas={linhas} tot={tot} />)}
@@ -642,7 +657,7 @@ const CurvaCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 pb-2">
         Cada entrega cobre as vendas até a próxima, pesadas por esta curva; o lançamento leva 50% a mais.
-        Padrão: peças vendidas por mês em 2026 (ano de Copa, como 2027). Outubro completado até o fim do mês; novembro estimado por out/2026 × (nov ÷ out de 2025).
+        Padrão: curva definida a partir da venda e do recebimento de 2026 (jun 12 · jul 33 · ago 20 · set 15 · out 10 · nov 10).
       </p>
     </Card>
   );
@@ -776,7 +791,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
         // Colunas: dias 01 e 15 de jun a nov + lançamentos fora dessas datas.
         // Num subgrupo, só as datas em que algum produto dele pode comprar; em TODOS, todas.
         const colunas = filtro === "TODOS" ? CALENDARIO : CALENDARIO.filter((d) => visiveis.some((p) => podeComprar(p, d) || linhas.some((x) => x.produto.artigo === p.artigo && x.entregas[d] > 0)));
-        const nCol = colunas.length + 3;
+        const nCol = colunas.length + 4;
+        const nomesLojas = pedido.lojas.map((l) => l.nome);
         const stickyCls = "sticky left-0 z-10";
         const celW = "min-w-[3rem] w-[3rem]";
         // Linha vertical mais forte quando muda o mês.
@@ -790,6 +806,9 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                 <thead>
                   <tr className="text-[10px] text-gray-400">
                     <th className={cn(stickyCls, "bg-white text-left font-extrabold px-3 py-2 min-w-[11rem] w-[11rem] md:min-w-[18rem] md:w-[18rem] border-b border-gray-100")}>Produto / loja</th>
+                    <th title={`Produto equivalente de 2026 — ${PERIODO_VENDA_ESTOQUE}`} className="font-extrabold px-1 py-2 border-b border-gray-100 min-w-[4.5rem] w-[4.5rem] leading-tight">
+                      <span className="text-emerald-600">Venda</span> × <span className="text-red-500">Est.</span><div className="text-[8px] font-bold">2026</div>
+                    </th>
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Total</th>
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Sug.</th>
                     {colunas.map((d, i) => (
@@ -836,6 +855,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                   </div>
                                 </div>
                               </td>
+                              <td className="px-1 py-1 text-center border-b border-gray-100 border-t-2 border-t-gray-200"><VendaEst artigo={p.artigo} lojas={nomesLojas} /></td>
                               <td className="px-0.5 py-1 border-b border-gray-100 border-t-2 border-t-gray-200" onClick={(e) => e.stopPropagation()}>
                                 <NumInput ariaLabel={`Total de ${p.artigo}`} value={total} disabled={travado} onCommit={(v) => setTotalProduto(p, ls, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
                               </td>
@@ -861,6 +881,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                       <div className="text-[9px] font-semibold text-gray-400">{brl(x.valor)} · <span className="text-blue-700 font-bold">{gOpen ? "▲ fechar grade" : "▼ ver grade"}</span></div>
                                     </button>
                                   </td>
+                                  <td className="px-1 py-1 text-center border-b border-gray-100"><VendaEst artigo={p.artigo} lojas={[x.loja.nome]} /></td>
                                   <td className="px-0.5 py-1 border-b border-gray-100">
                                     <NumInput ariaLabel={`Total de ${p.artigo} na loja ${x.loja.nome}`} value={x.qtd} disabled={travado} onCommit={(v) => setTotal(p, x, v)} className="w-full h-8 text-center px-0 text-xs rounded-lg bg-gray-100 font-black" />
                                   </td>
@@ -885,6 +906,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                           <button onClick={() => voltar(p, x.loja.id)} className="ml-2 text-[9px] font-bold text-gray-400 hover:text-black inline-flex items-center gap-0.5"><RotateCcw size={9} /> sugestão</button>
                                         )}
                                       </td>
+                                      <td className={cn("px-1 py-0.5 text-center", ultima && "border-b border-gray-200")}><VendaEst artigo={p.artigo} lojas={[x.loja.nome]} tamanho={t} pequeno /></td>
                                       <td className={cn("px-0.5 py-0.5", ultima && "border-b border-gray-200")}>
                                         <NumInput ariaLabel={`${x.loja.nome} total tamanho ${t}`} value={totT} disabled={travado} onCommit={(v) => setTamanhoTotal(p, x, t, v)} className={cn("w-full h-7 text-center px-0 text-[11px] rounded-md bg-gray-50 font-bold", !totT && "text-gray-300")} />
                                       </td>
@@ -1182,6 +1204,130 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 px-2">Fechar trava o pedido para edição (só o master reabre) e guarda uma cópia no histórico. O Excel de conferência traz loja, artigo, entrega, tamanho e quantidade, para conferir antes de subir no site.</p>
       <HistoricoCard versao={versaoHist} />
+    </div>
+  );
+};
+
+// ============================= INDICADORES =============================
+
+type Efeito = "baixa" | "alta" | "neutro";
+interface Indicador {
+  tipo: string; titulo: string; quando: string; aconteceu: string;
+  medido?: string; efeito: Efeito; em2027: string; ajustar: string;
+}
+// Fatos de 2025–2026 que mexeram na venda; servem para o franqueado decidir se ajusta a sugestão.
+const INDICADORES: Indicador[] = [
+  {
+    tipo: "Calendário", titulo: "Copa do Mundo masculina (pausa do Brasileirão)", quando: "11/06 a 19/07/2026",
+    aconteceu: "Sem jogos do Flamengo por ~5 semanas. A camisa WC Brasil (Fanshirt) fez 31% da venda da rede em junho e quase sumiu depois.",
+    medido: "Peças vs 2025: jun −17%, jul −36%", efeito: "baixa",
+    em2027: "2027 tem a Copa Feminina no Brasil (24/06 a 25/07). Confirmar se o calendário do Flamengo para.",
+    ajustar: "Curva (jun/jul)",
+  },
+  {
+    tipo: "Competição", titulo: "Eliminação na Libertadores (semifinal, Estudiantes)", quando: "22/10/2026",
+    aconteceu: "Saída nos pênaltis no Maracanã, na semifinal.",
+    medido: "Outubro vs 2025: −26% (projeção do mês). Em 2025, com a final, novembro vendeu +56% sobre outubro.", efeito: "baixa",
+    em2027: "Campanha longa na Libertadores puxa out/nov; eliminação cedo derruba. Mata-mata de 2027: ago a nov.",
+    ajustar: "Curva (out/nov) e verba",
+  },
+  {
+    tipo: "Competição", titulo: "Eliminação na Copa do Brasil (Vitória)", quando: "14/05/2026",
+    aconteceu: "Saída antes das oitavas, antes do período da coleção FW.",
+    medido: "Sem efeito medido no banco (vendas a partir de junho).", efeito: "neutro",
+    em2027: "Se o time avançar, as fases decisivas caem em ago–out e ajudam a venda.",
+    ajustar: "Curva (ago a out)",
+  },
+  {
+    tipo: "Competição", titulo: "Título da Libertadores 2025", quando: "29/11/2025",
+    aconteceu: "Final e título no fim de novembro, junto com a Black Friday.",
+    medido: "Novembro/2025: 103 mil peças (+56% sobre outubro).", efeito: "alta",
+    em2027: "Não usar novembro/2025 como base: o pico foi do título.",
+    ajustar: "Curva (nov)",
+  },
+  {
+    tipo: "Mercado", titulo: "Restrição ao patrocínio de bets (MP 1.394/2026)", quando: "out/2026 (Congresso vota em nov)",
+    aconteceu: "Medida provisória restringe publicidade e patrocínio de bets. O governo informou que vender camisas já produzidas com a marca não é nova propaganda.",
+    medido: "Em 2026 a Third masculina só existiu com Betano (17% da venda da rede).", efeito: "neutro",
+    em2027: "Camisa com patrocínio pode mudar ou sair. As versões PROMO estão fora do app.",
+    ajustar: "Mix da torcedor masculina",
+  },
+  {
+    tipo: "Produto", titulo: "Preço da Pro (antiga Authentic)", quando: "FW27",
+    aconteceu: "Pro FW27 a R$ 899,99. Authentic 2026 vendeu a preço médio de R$ 788.",
+    medido: "+14% no preço médio. Torcedor (R$ 449,99) e Fanshirt (R$ 229,99) iguais a 2026.", efeito: "baixa",
+    em2027: "Preço mais alto tende a vender menos peças da Pro.",
+    ajustar: "Quantidade da Pro",
+  },
+];
+
+const MESES_IND = [
+  { m: "Jun", a25: 63898, a26: 52804 }, { m: "Jul", a25: 56039, a26: 36019 }, { m: "Ago", a25: 104186, a26: 71279 },
+  { m: "Set", a25: 47840, a26: 48117 }, { m: "Out", a25: 66194, a26: 36242, parcial: true }, { m: "Nov", a25: 103318, a26: 0 },
+];
+
+const IndicadoresTab: React.FC<{ onIr: (s: SectionId) => void }> = ({ onIr }) => {
+  const [tipo, setTipo] = React.useState("TODOS");
+  const tipos = ["TODOS", ...Array.from(new Set(INDICADORES.map((i) => i.tipo)))];
+  const max = Math.max(...MESES_IND.map((x) => Math.max(x.a25, x.a26)));
+  const icone = (e: Efeito) => (e === "baixa" ? <TrendingDown size={14} /> : e === "alta" ? <TrendingUp size={14} /> : <Minus size={14} />);
+  const cor = (e: Efeito) => (e === "baixa" ? "bg-red-50 text-red-600" : e === "alta" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500");
+  return (
+    <div className="space-y-4">
+      <Card>
+        <h3 className="text-sm font-extrabold">Venda por mês — 2025 × 2026</h3>
+        <p className="text-[10px] text-gray-400 mt-0.5">Peças ADIDAS FLA na rede. Outubro/2026 até 23/10.</p>
+        <div className="flex items-end gap-3 h-40 mt-4">
+          {MESES_IND.map((x) => {
+            const dif = x.a26 && x.a25 ? ((x.parcial ? (x.a26 * 31) / 23 : x.a26) / x.a25 - 1) * 100 : null;
+            return (
+              <div key={x.m} className="flex-1 flex flex-col items-center h-full justify-end gap-1">
+                {dif !== null && <div className={cn("text-[9px] font-black", dif < 0 ? "text-red-600" : "text-emerald-700")}>{dif > 0 ? "+" : ""}{Math.round(dif)}%</div>}
+                <div className="w-full flex items-end gap-0.5 flex-1">
+                  <div className="flex-1 bg-gray-300 rounded-t" style={{ height: `${(x.a25 / max) * 100}%` }} title={`2025: ${n0(x.a25)}`} />
+                  <div className={cn("flex-1 rounded-t", x.parcial ? "bg-black/60" : "bg-black")} style={{ height: `${(x.a26 / max) * 100}%` }} title={`2026: ${n0(x.a26)}`} />
+                </div>
+                <div className="text-[9px] font-extrabold text-gray-500">{x.m}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap gap-3 mt-2 text-[9px] font-bold text-gray-500">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-gray-300 rounded-sm" /> 2025</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-black rounded-sm" /> 2026</span>
+          <span>% = 2026 contra 2025 (outubro projetado)</span>
+        </div>
+      </Card>
+
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        {tipos.map((t) => (
+          <button key={t} onClick={() => setTipo(t)} className={cn("shrink-0 h-9 px-3 rounded-xl text-[10px] font-extrabold border uppercase", tipo === t ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>{t}</button>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        {INDICADORES.filter((i) => tipo === "TODOS" || i.tipo === tipo).map((i) => (
+          <Card key={i.titulo} className="flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-[9px] font-extrabold uppercase tracking-wider text-gray-400">{i.tipo} · {i.quando}</div>
+                <div className="text-sm font-extrabold leading-tight mt-0.5">{i.titulo}</div>
+              </div>
+              <span className={cn("shrink-0 flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-black uppercase", cor(i.efeito))}>
+                {icone(i.efeito)} {i.efeito === "baixa" ? "derrubou" : i.efeito === "alta" ? "puxou" : "atenção"}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-600">{i.aconteceu}</p>
+            {i.medido && <div className="text-[11px] font-extrabold bg-gray-50 rounded-lg px-2 py-1.5">{i.medido}</div>}
+            <div className="text-[11px]"><span className="font-extrabold">Em 2027: </span><span className="text-gray-600">{i.em2027}</span></div>
+            <div className="mt-auto pt-1 flex items-center justify-between text-[10px] font-bold text-gray-400">
+              <span>Onde ajustar: <span className="text-gray-700">{i.ajustar}</span></span>
+              <button onClick={() => onIr(/curva|verba|mix/i.test(i.ajustar) ? "representatividade" : "sugestao")} className="text-blue-700 hover:underline">ajustar →</button>
+            </div>
+          </Card>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-400 px-2">Os indicadores não mudam a sugestão sozinhos: servem para você decidir se mexe na curva, na verba ou nas quantidades.</p>
     </div>
   );
 };

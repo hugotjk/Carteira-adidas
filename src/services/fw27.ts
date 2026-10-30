@@ -15,6 +15,7 @@ import amd from "../data/fw27Amd.json";
 import subgruposPorArtigo from "../data/fw27Subgrupos.json";
 import vendasPdv from "../data/fw27Vendas.json";
 import comparaveis from "../data/fw27Comparaveis.json";
+import vendaEstoque from "../data/fw27VendaEstoque.json";
 import { lojaCanonica } from "./fw27Lojas";
 
 export interface Fw27Produto {
@@ -82,7 +83,7 @@ export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).
 
 /** Linha do produto (como no PDV): MASCULINA, FEMININA, INFANTO ou ACESSORIOS. */
 export function linhaDe(p: Pick<Fw27Produto, "tipo" | "genero" | "idade">): string {
-  if (/SOCK|BAG|CAP|BALL/i.test(p.tipo)) return "ACESSORIOS";
+  if (/SOCK|BAG|CAP|BALL|BUCKET|HEADWEAR|TOWEL/i.test(p.tipo)) return "ACESSORIOS";
   if (p.idade !== "ADULT" || /MINIKIT/i.test(p.tipo)) return "INFANTO";
   return p.genero === "FEMALE" ? "FEMININA" : "MASCULINA";
 }
@@ -114,8 +115,30 @@ export function grupoDe(p: Pick<Fw27Produto, "descricao" | "tipo" | "genero" | "
   return l === "FEMININA" ? `${g} FEM` : l === "INFANTO" ? `${g} INF` : g;
 }
 
+// ---------------- Venda × estoque do produto equivalente de 2026 ----------------
+const VE = vendaEstoque as { periodo: string; refs: Record<string, string[]>; venda: Record<string, Record<string, Record<string, number>>>; estoque?: Record<string, Record<string, Record<string, number>>> };
+export const PERIODO_VENDA_ESTOQUE = VE.periodo;
+export const TEM_ESTOQUE = !!VE.estoque;
+/** Referências de 2026 usadas como comparação do artigo. */
+export const refsComparaveis = (artigo: string) => VE.refs?.[artigo] || [];
+const TAM_VE: Record<string, string> = { SM: "S", MD: "M", LG: "L", XXL: "2XL" };
+/** Venda e estoque (peças) do equivalente 2026 numa loja (ou na soma das lojas), num tamanho ou em todos. */
+export function vendaEstoqueDe(artigo: string, lojas: string[], tamanho?: string): { venda: number; estoque: number | null } {
+  const soma = (tab?: Record<string, Record<string, Record<string, number>>>) => {
+    let q = 0;
+    lojas.forEach((n) => {
+      const porTam = tab?.[artigo]?.[nomeBase(n)];
+      if (!porTam) return;
+      if (tamanho) q += porTam[TAM_VE[tamanho] || tamanho] || 0;
+      else Object.values(porTam).forEach((x) => { q += x; });
+    });
+    return q;
+  };
+  return { venda: soma(VE.venda), estoque: VE.estoque ? soma(VE.estoque) : null };
+}
+
 /** Ordem de exibição dos subgrupos; os que não estiverem aqui vão no fim. */
-const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"];
+const ORDEM_SUBGRUPOS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE", "BUCKET"];
 
 export const SUBGRUPOS: string[] = (() => {
   const out: string[] = [];
@@ -243,6 +266,7 @@ export function aplicarVerbas(pedido: Fw27Pedido): Fw27Pedido {
 
 /** Perfil de grade do produto: masculino, feminino, infantil, mini ou meião. */
 export function perfilGrade(p: Fw27Produto): string {
+  if (p.tamanhos.length && p.tamanhos.every((t) => /^OSF/.test(t))) return "CABECA";
   if (/MEI[AÃ]O/i.test(p.descricao)) return "MEIAO";
   if (p.tamanhos.some((t) => ["1824", "2-3A", "3-4A", "4-5A", "6-7A"].includes(t))) return "MINI";
   if (p.idade !== "ADULT" || p.tamanhos.some((t) => ["7-8A", "910A", "1112", "1314", "1516"].includes(t))) return "KIDS";
@@ -263,9 +287,9 @@ function pesosMeio(p: Fw27Produto): number[] {
 // ---------------- Grade por tamanho ----------------
 export const PERFIS_GRADE: { id: string; nome: string }[] = [
   { id: "MASC", nome: "Masculina" }, { id: "FEM", nome: "Feminina" }, { id: "KIDS", nome: "Infantil" },
-  { id: "MINI", nome: "Mini kit" }, { id: "MEIAO", nome: "Meião" },
+  { id: "MINI", nome: "Mini kit" }, { id: "MEIAO", nome: "Meião" }, { id: "CABECA", nome: "Boné / bucket" },
 ];
-const ORDEM_TAM = ["1824", "2-3A", "3-4A", "4-5A", "5-6A", "6-7A", "7-8A", "910A", "1112", "1314", "1516", "KXL", "2XS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL"];
+const ORDEM_TAM = ["1824", "2-3A", "3-4A", "4-5A", "5-6A", "6-7A", "7-8A", "910A", "1112", "1314", "1516", "KXL", "2XS", "XS", "S", "M", "L", "XL", "2XL", "3XL", "4XL", "OSFC", "OSFY", "OSFW", "OSFM", "OSFL"];
 const tamVenda = (t: string) => TAM_VENDA[t] || t;
 /** Tamanhos de cada perfil (os que existem nos produtos da AMD), em ordem. */
 export const TAMANHOS_PERFIL: Record<string, string[]> = (() => {
@@ -499,10 +523,14 @@ const diasEntre = (a: string, b: string) => Math.round((dataUTC(b).getTime() - d
 const diasNoMes = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).getUTCDate();
 
 /** Curva padrão: vendas de 2026 (ano de Copa, parecido com 2027). Nov/2026 estimado. */
+/**
+ * Curva padrão de compra por mês, definida pelo Hugo (30/10) olhando venda × recebimento de 2026:
+ * venda jun 13 · jul 12 · ago 28 · set 20 · out 16 · nov 10 | recebimento 26 · 38 · 14 · 9 · 3 · 10.
+ */
+export const CURVA_SUGERIDA: Record<string, number> = { "06": 12, "07": 33, "08": 20, "09": 15, "10": 10, "11": 10 };
 export const curvaPadrao = (): Record<string, number> => {
   const out: Record<string, number> = {};
-  const ok = MESES_CURVA.some((m) => Number(VENDAS.curva?.[m]) > 0);
-  MESES_CURVA.forEach((m) => { out[m] = ok ? Number(VENDAS.curva[m] || 0) : 100 / MESES_CURVA.length; });
+  MESES_CURVA.forEach((m) => { out[m] = CURVA_SUGERIDA[m] ?? 0; });
   return out;
 };
 

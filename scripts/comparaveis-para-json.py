@@ -41,6 +41,7 @@ M={
  ('ME2495','Camisa W cor 1','Camiseta fem Poliamidas ruby',sh(['KU4581'])),('ME2496','Camisa W cor 2','Camiseta fem Poliamidas black',sh(['KU4591'])),
  ('ME2491','Regata M cor 1','Regata Poliamidas ruby',sh(['KU4589'])),('ME2492','Regata M cor 2','Regata Poliamidas black',sh(['KU4596'])),
  ('LI1199','Short SH7 cor 1','sem comparável: = regata',sh(['KU4589'])),('LI1207','Short SH7 cor 2','sem comparável: = regata',sh(['KU4596']))],
+'BUCKET':[('KY3172','Bucket','Bucket SS26 (KD5141)',sh(['KD5141']))],
 'BASQUETE':[('LY7247','Regata I','Regata basquete I 2026',sh(['KT8968'])),('LZ6527','Regata II','Regata basquete II 2026',sh(['KT8971'])),('LY7249','Bermuda I','Short basquete I 2026',sh(['KT8969'])),('LZ6525','Bermuda II','Short basquete II 2026',sh(['KT8970']))],
 }
 tot=sum(x[3] for l in M.values() for x in l)

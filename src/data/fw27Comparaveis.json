@@ -1,16 +1,17 @@
 {
  "fonte": "DBSleek: produto FW27 × equivalente 2026 (jun–out/26); Tiro Travel jul–out/26; Icon ago–nov/25; Special = WC Brasil ago–out/26; Fanshirt = torcedor do kit × (fanshirt/home 2026)",
  "subgrupos": {
-  "HOME": 25.66,
-  "AWAY": 9.6,
-  "THIRD": 33.71,
-  "FANSHIRT": 13.4,
+  "HOME": 25.65,
+  "AWAY": 9.59,
+  "THIRD": 33.7,
+  "FANSHIRT": 13.39,
   "SPECIAL": 0.33,
   "TIROTECH": 6.11,
   "ICON": 4.47,
   "ORIGINALS": 5.16,
   "GRAPHIC": 0.37,
   "POLIAMIDAS": 0.53,
+  "BUCKET": 0.04,
   "BASQUETE": 0.67
  },
  "produtos": {
@@ -72,6 +73,7 @@
   "ME2492": 0.029,
   "LI1199": 0.0278,
   "LI1207": 0.029,
+  "KY3172": 0.0291,
   "LY7247": 0.1669,
   "LZ6527": 0.281,
   "LY7249": 0.0549,
