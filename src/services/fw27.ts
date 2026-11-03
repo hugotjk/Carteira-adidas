@@ -72,6 +72,8 @@ export interface Fw27Pedido {
   grade?: Record<string, Record<string, number>>;
   /** % de cada tamanho por perfil só para uma loja: lojaId → perfil → tamanho → %. Manda sobre o de todas. */
   gradeLoja?: Record<string, Record<string, Record<string, number>>>;
+  /** As lojas do login já entraram sozinhas na 1ª vez (não entram de novo se forem apagadas). */
+  lojasAuto?: boolean;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
   curva?: Record<string, number>;
   status: Fw27Status;
