@@ -678,21 +678,17 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_4.5rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
-          <span>Subgrupo</span><span className="text-center">% Pedido</span><span className="text-right">No pedido</span><span className="text-right">% Sugestão</span>
+        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
+          <span>Subgrupo</span><span className="text-center">% Pedido</span><span className="text-right">% Sugestão</span>
         </div>
         {[...SUBGRUPOS].sort((a, b) => (pct[b] || 0) - (pct[a] || 0) || SUBGRUPOS.indexOf(a) - SUBGRUPOS.indexOf(b)).map((pk) => {
-          const t = tot.porPack[pk];
           return (
-            <div key={pk} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_4.5rem] gap-2 items-center py-2 border-t border-gray-50">
+            <div key={pk} className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem] gap-2 items-center py-2 border-t border-gray-50">
               <div className="min-w-0">
                 <div className="text-[11px] font-extrabold uppercase truncate">{pk}</div>
                 <div className="text-[10px] font-semibold text-gray-400">{PRODUTOS.filter((p) => p.subgrupo === pk).length} refs · {brl((tot.verba * (pct[pk] || 0)) / 100)}{VENDAS.subgrupos[pk] !== undefined && <> · vendas 2026 {pct1(VENDAS.subgrupos[pk])}</>}</div>
               </div>
               <NumInput ariaLabel={`% do subgrupo ${pk}`} decimals={1} value={pct[pk] || 0} disabled={travado} onCommit={(v) => setPack(pk, v)} className="w-full" />
-              <div className="text-right text-[10px] font-bold text-gray-500">
-                {pct1(t?.pctAtual || 0)} <span className="text-gray-400">das peças</span>
-              </div>
               {/* % Sugestão: o padrão definido, fixo (não muda quando o franqueado edita o % Pedido). */}
               <div className="text-right text-xs font-black text-gray-400 tabular-nums">{pct1(sugSub[pk] || 0)}</div>
             </div>
