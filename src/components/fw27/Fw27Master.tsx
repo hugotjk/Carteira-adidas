@@ -877,7 +877,7 @@ const CurvaCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 pb-2">
         Cada entrega cobre as vendas até a próxima, pesadas por esta curva; o lançamento leva 50% a mais.
-        Padrão: curva definida a partir da venda e do recebimento de 2026 (jun 12 · jul 33 · ago 20 · set 15 · out 10 · nov 10).
+        Padrão: curva definida a partir da venda e do recebimento de 2026 (jun 10 · jul 33 · ago 15 · set 17 · out 13 · nov 12).
       </p>
     </Card>
   );
