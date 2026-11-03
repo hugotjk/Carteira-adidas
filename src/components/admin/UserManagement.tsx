@@ -148,7 +148,8 @@ const UserManagement: React.FC = () => {
 
   // Extract unique data categories dynamically from the loaded database (rawOrders)
   const uniqueManagers = useMemo(() => {
-    return Array.from(new Set(rawOrders.map(o => o.gestor).filter(Boolean))).sort();
+    // DEMONSTRACAO: gestor das lojas DEMO da Sugestão FW27 (não existe na carteira).
+    return Array.from(new Set([...rawOrders.map(o => o.gestor).filter(Boolean), "DEMONSTRACAO"])).sort();
   }, [rawOrders]);
 
   const uniqueStores = useMemo(() => {

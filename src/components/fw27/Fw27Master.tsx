@@ -713,7 +713,8 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
   const { allOrders } = useData();
   const visiveis = React.useMemo(() => {
     const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
-    if (tudo) return VENDAS.lojas;
+    // Lojas DEMO só aparecem para o login de demonstração (gestor DEMONSTRACAO).
+    if (tudo) return VENDAS.lojas.filter((l) => l.gestor !== "DEMONSTRACAO");
     const v = new Set(((userProfile?.accessValues as string[]) || []).map((x) => String(x).toUpperCase().trim()));
     // Lojas que o login já enxerga na carteira (vale para qualquer tipo de acesso: gestor, loja, grupo, customer).
     const daCarteira = new Set((allOrders || []).map((o: any) => nomeBase(String(o.loja || ""))));
