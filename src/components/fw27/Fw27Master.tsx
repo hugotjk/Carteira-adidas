@@ -349,9 +349,9 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
   const faixa = (p: Fw27Produto) => (p.preco < 250 ? "Entrada (até R$ 249)" : p.preco < 500 ? "Intermediário (R$ 250–499)" : "Premium (R$ 500+)");
   const nomeLinha: Record<string, string> = { MASCULINA: "Masculino", FEMININA: "Feminino", INFANTO: "Infantil", ACESSORIOS: "Acessórios" };
   const mixes = [
-    { t: "Por público", d: mix((p) => nomeLinha[linhaDe(p)] || linhaDe(p), ["Masculino", "Feminino", "Infantil", "Acessórios"]) },
-    { t: "Por divisão", d: mix(divisao, ["Linha de jogo", "Tiro Tech", "Bringbacks (Icon)", "OG / Graphic", "Outros"]) },
-    { t: "Por faixa de preço", d: mix(faixa, ["Entrada (até R$ 249)", "Intermediário (R$ 250–499)", "Premium (R$ 500+)"]) },
+    { t: "Por público", d: mix((p) => nomeLinha[linhaDe(p)] || linhaDe(p)) },
+    { t: "Por divisão", d: mix(divisao) },
+    { t: "Por faixa de preço", d: mix(faixa) },
   ];
 
   return (
@@ -549,6 +549,7 @@ interface EditProps {
 const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
   const [nome, setNome] = React.useState("");
   const pct = pctSubgrupos(pedido);
+  const sugSub = subgruposPadrao();
   const somaPct = SUBGRUPOS.reduce((a, pk) => a + (pct[pk] || 0), 0);
   const okSoma = Math.abs(somaPct - 100) < 0.05;
 
@@ -677,13 +678,13 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
             </button>
           )}
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
-          <span>Subgrupo</span><span className="text-center">%</span><span className="text-right">No pedido</span>
+        <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_4.5rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
+          <span>Subgrupo</span><span className="text-center">% Pedido</span><span className="text-right">No pedido</span><span className="text-right">% Sugestão</span>
         </div>
         {[...SUBGRUPOS].sort((a, b) => (pct[b] || 0) - (pct[a] || 0) || SUBGRUPOS.indexOf(a) - SUBGRUPOS.indexOf(b)).map((pk) => {
           const t = tot.porPack[pk];
           return (
-            <div key={pk} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem] gap-2 items-center py-2 border-t border-gray-50">
+            <div key={pk} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem_4.5rem] gap-2 items-center py-2 border-t border-gray-50">
               <div className="min-w-0">
                 <div className="text-[11px] font-extrabold uppercase truncate">{pk}</div>
                 <div className="text-[10px] font-semibold text-gray-400">{PRODUTOS.filter((p) => p.subgrupo === pk).length} refs · {brl((tot.verba * (pct[pk] || 0)) / 100)}{VENDAS.subgrupos[pk] !== undefined && <> · vendas 2026 {pct1(VENDAS.subgrupos[pk])}</>}</div>
@@ -692,6 +693,8 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
               <div className="text-right text-[10px] font-bold text-gray-500">
                 {pct1(t?.pctAtual || 0)} <span className="text-gray-400">das peças</span>
               </div>
+              {/* % Sugestão: o padrão definido, fixo (não muda quando o franqueado edita o % Pedido). */}
+              <div className="text-right text-xs font-black text-gray-400 tabular-nums">{pct1(sugSub[pk] || 0)}</div>
             </div>
           );
         })}
@@ -891,7 +894,7 @@ const CurvaCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 pb-2">
         Cada entrega cobre as vendas até a próxima, pesadas por esta curva; o lançamento leva 50% a mais.
-        Padrão: curva definida a partir da venda e do recebimento de 2026 (jun 10 · jul 33 · ago 15 · set 17 · out 13 · nov 12).
+        Padrão: curva definida a partir da venda e do recebimento de 2026 (jun 10 · jul 30 · ago 15 · set 20 · out 13 · nov 12).
       </p>
     </Card>
   );
@@ -1605,7 +1608,7 @@ const FatosUsuarios: React.FC<{ icone: (e: Efeito) => React.ReactNode; cor: (e: 
         {!novo ? (
           <button onClick={() => { setNovo(true); setMsg(""); }} className="flex flex-col items-center justify-center gap-1 py-6 text-gray-500 hover:text-black">
             <Plus size={20} />
-            <span className="text-sm font-extrabold">Adicionar fato relevante</span>
+            <span className="text-sm font-extrabold">Contribua com fatos relevantes</span>
             <span className="text-[10px] font-semibold text-gray-400">Algo que mexeu na venda e todo mundo deveria saber. Passa por aprovação.</span>
           </button>
         ) : (
