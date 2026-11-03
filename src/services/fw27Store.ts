@@ -39,6 +39,7 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
     ...(d.datas && typeof d.datas === "object" && { datas: d.datas }),
     ...(Array.isArray(d.gradePropria) && { gradePropria: d.gradePropria }),
     ...(d.gradeLoja && typeof d.gradeLoja === "object" && { gradeLoja: d.gradeLoja }),
+    ...(d.lojasAuto && { lojasAuto: true }),
     status: d.status === "enviado" ? "enviado" : "rascunho",
     atualizadoEm: d.atualizadoEm,
     enviadoEm: d.enviadoEm,

@@ -223,6 +223,15 @@ const Fw27Master: React.FC = () => {
   const tot = React.useMemo(() => totais(pedido, linhas), [pedido, linhas]);
   const travado = pedido.status === "enviado";
   const semLojas = pedido.lojas.length === 0;
+  // 1ª vez (pedido vazio): já entra com as lojas do login, com verba e % sugeridos. Master/ALL escolhe as lojas.
+  const { visiveis, tudo } = useLojasVisiveis();
+  React.useEffect(() => {
+    if (estado === "carregando" || tudo || travado || pedidoSalvo.lojasAuto || pedidoSalvo.lojas.length || !visiveis.length) return;
+    atualizar((p) => (p.lojas.length || p.lojasAuto ? p : {
+      ...p, lojasAuto: true,
+      lojas: visiveis.map((b) => ({ id: novoId(), nome: b.nome, verba: 0, gestor: b.gestor, codAdidas: b.codAdidas })),
+    }));
+  }, [estado, tudo, travado, pedidoSalvo.lojasAuto, pedidoSalvo.lojas.length, visiveis, atualizar]);
 
 
   return (
@@ -706,13 +715,13 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
   );
 };
 
-/** Puxa as lojas da base de vendas (com gestor e código) e divide a verba pelo peso nas vendas. */
-const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"] }> = ({ pedido, atualizar }) => {
+/** Lojas da base de vendas que o login enxerga (mesmo acesso do resto do app). */
+function useLojasVisiveis() {
   // Mesmo acesso do resto do app: master/ALL vê todas; GESTOR vê as lojas dos seus gestores; LOJA só as suas lojas.
   const { user, userProfile } = useAuth();
   const { allOrders } = useData();
+  const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
   const visiveis = React.useMemo(() => {
-    const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
     // Lojas DEMO só aparecem para o login de demonstração (gestor DEMONSTRACAO).
     if (tudo) return VENDAS.lojas.filter((l) => l.gestor !== "DEMONSTRACAO");
     const v = new Set(((userProfile?.accessValues as string[]) || []).map((x) => String(x).toUpperCase().trim()));
@@ -724,7 +733,13 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
       || (tipo === "GESTOR" && v.has(l.gestor.toUpperCase()))
       || (tipo === "LOJA" && Array.from(v).some((x) => nomeBase(x) === l.nome))
       || (tipo === "CUSTOMER" && !!l.codAdidas && v.has(l.codAdidas)));
-  }, [user?.email, userProfile, allOrders]);
+  }, [tudo, userProfile, allOrders]);
+  return { visiveis, tudo };
+}
+
+/** Puxa as lojas da base de vendas (com gestor e código) e divide a verba pelo peso nas vendas. */
+const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"] }> = ({ pedido, atualizar }) => {
+  const { visiveis } = useLojasVisiveis();
   const gestores = React.useMemo(() => Array.from(new Set(visiveis.map((l) => l.gestor).filter(Boolean))).sort(), [visiveis]);
   const [gestor, setGestor] = React.useState("TODOS");
   const noPedido = new Set(pedido.lojas.map((l) => nomeBase(l.nome)));
