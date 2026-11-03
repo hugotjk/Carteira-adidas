@@ -40,7 +40,7 @@ export function montarRegistro(tipo: TipoRegistro, por: string, pedido: Fw27Pedi
     Object.keys(x.gradeEntregas).sort().forEach((d) => {
       x.produto.tamanhos.forEach((t) => {
         const q = Number(x.gradeEntregas[d]?.[t] || 0);
-        if (q > 0) itens.push([x.loja.nome, x.loja.codAdidas || "", x.produto.artigo, x.produto.descricao, d, t, q, x.produto.preco]);
+        if (q > 0) itens.push([x.loja.nome, x.loja.codAdidas || "", x.produto.artigo, x.produto.descricao, pedido.datas?.[d] || d, t, q, x.produto.preco]);
       });
     });
   });

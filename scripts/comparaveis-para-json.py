@@ -7,7 +7,8 @@ import sys
 v=pd.read_csv(sys.argv[1]+'/VENDAS_MES_DBSLEEK.csv',dtype={'TAMANHO':str})
 def sh(refs,a='2026-06',b='2026-10',fator=1.0):
     x=v[(v.MES>=a)&(v.MES<=b)]
-    return x[x.REFERENCIA_FORNECEDOR.isin(refs)].VENDA.sum()/x.VENDA.sum()*100*fator
+    # em PEÇAS (Hugo, 03/11): % das peças da rede no período
+    return x[x.REFERENCIA_FORNECEDOR.isin(refs)].PECAS.sum()/x.PECAS.sum()*100*fator
 FEM_CAM=sh(['JZ2377'])/sh(['JZ2374','KB1849']); INF_CAM=sh(['JZ2373'])/sh(['JZ2374','KB1849'])
 FEM_SH=sh(['JZ6365'])/sh(['JZ6367']); FEM_JAQ=sh(['JN0883'],'2025-08','2025-11')/sh(['JN0880'],'2025-08','2025-11')
 print('fatores fem camisa %.2f inf camisa %.2f fem short %.2f fem jaqueta %.2f'%(FEM_CAM,INF_CAM,FEM_SH,FEM_JAQ))
@@ -46,7 +47,7 @@ M={
  ('MF9669','Short masc','½ Tirotech (shorts TT) + ½ DNA (shorts)',0.5*sh(['KG9689'],*TT)+0.5*sh(['JZ2808'])),
  ('LE6197','Vestido fem','½ Tirotech camisa fem + ½ DNA camiseta fem',0.5*sh(['KG9688'],*TT)*FEM_CAM+0.5*sh(['JZ2809']))],
 'ORIGINALS':[('LE6195','Camisa RMX (jersey)','Camiseta Originals 2026',sh(['JZ2742'])),('LE6194','Jaqueta RMX','Jaqueta Originals 2026',sh(['JZ2745'])),('LE6191','Calça RMX','Calça Originals 2026',sh(['JZ2741'])),
- ('LE6192','Short RMX','Shorts Originals 2026',sh(['JZ2744'])),('LD3710','Camisa OG GR masc','Média das camisetas Graphic 2026',sh(['KG9690','JZ2748','JZ2747'])/3),('LG5433','Camisa OG GR inf','Graphic média × %.0f%%'%(INF_CAM*100),sh(['KG9690','JZ2748','JZ2747'])/3*INF_CAM)],
+ ('LE6192','Short RMX','Shorts Originals 2026',sh(['JZ2744'])),('LD3710','Camisa OG GR masc','Média das camisetas Graphic 2026 × 0,57 (Hugo: OG GR ganha menos)',sh(['KG9690','JZ2748','JZ2747'])/3*0.57),('LG5433','Camisa OG GR inf','Graphic média × %.0f%% × 0,57'%(INF_CAM*100),sh(['KG9690','JZ2748','JZ2747'])/3*INF_CAM*0.57)],
 'GRAPHIC':[('LD3711','Camisa GR masc','Camiseta SZN GR 2026',sh(['KG9690'])),('LD3715','Camisa GR inf','Camiseta SZN GR × %.0f%%'%(INF_CAM*100),sh(['KG9690'])*INF_CAM)],
 'POLIAMIDAS':[('ME2493','Camisa M cor 1','Tshirt Poliamidas M ruby',sh(['KU4586'])),('ME2494','Camisa M cor 2','Tshirt Poliamidas M black',sh(['KU4592'])),
  ('ME2495','Camisa W cor 1','Camiseta fem Poliamidas ruby',sh(['KU4581'])),('ME2496','Camisa W cor 2','Camiseta fem Poliamidas black',sh(['KU4591'])),

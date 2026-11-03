@@ -82,6 +82,15 @@ service cloud.firestore {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.porUid == request.auth.uid);
     }
 
+    // Fatos relevantes da Sugestão FW27: qualquer login propõe (fica pendente); master/admin aceita, recusa e edita.
+    // Os outros leem os aprovados para todos e os que eles mesmos criaram.
+    match /fw27Fatos/{fatoId} {
+      allow create: if isAuthenticated() && request.resource.data.autorUid == request.auth.uid && request.resource.data.status == "pendente";
+      allow read: if isAdmin() || (isAuthenticated() && (resource.data.autorUid == request.auth.uid
+        || (resource.data.status == "aprovado" && resource.data.visibilidade == "todos")));
+      allow update, delete: if isAdmin();
+    }
+
     match /orders/{orderId} {
       // Allow authenticated users to read orders
       allow read: if isAuthenticated();
