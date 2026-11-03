@@ -643,6 +643,8 @@ export function curvaDe(pedido: Fw27Pedido): Record<string, number> {
   const salvo = pedido.curva || {};
   const out: Record<string, number> = {};
   if (!MESES_CURVA.some((m) => salvo[m] !== undefined)) return curvaPadrao();
+  // Pedido salvo com a curva padrão antiga (12/33/20/15/10/10) passa para a nova.
+  if (MESES_CURVA.map((m) => Number(salvo[m] || 0)).join(",") === "12,33,20,15,10,10") return curvaPadrao();
   MESES_CURVA.forEach((m) => { out[m] = Number(salvo[m] || 0); });
   return out;
 }
