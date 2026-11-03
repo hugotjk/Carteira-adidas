@@ -12,6 +12,7 @@ import {
 } from "../services/dataService";
 import { useAuth } from "./AuthContext";
 import { fixBrokenAccents } from "../lib/utils";
+import { carteiraDemo, ehLoginDemo } from "../services/carteiraDemo";
 
 export interface SyncResult {
   count: number;
@@ -223,7 +224,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return false;
     });
 
-    setAllOrders(filtered);
+    // Login de demonstração: carteira DEMO (cópia de lojas medianas, sem dados do cliente).
+    const demo = ehLoginDemo(type, userProfile.accessValues || []) ? carteiraDemo(rawOrders) : [];
+    setAllOrders(demo.length ? [...filtered, ...demo] : filtered);
   }, [rawOrders, userProfile]);
 
   return (
