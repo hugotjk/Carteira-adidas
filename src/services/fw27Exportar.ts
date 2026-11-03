@@ -57,7 +57,7 @@ function abaXml(cartNome: string, soldTo: string, linhas: LinhaCarrinho[], prime
   return out.join("").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:K${linhas.length + 5}"/>`);
 }
 
-export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opcoes: { nomeCarrinho?: string } = {}): ResultadoExportacao {
+export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opcoes: { nomeCarrinho?: string; datas?: Record<string, string> } = {}): ResultadoExportacao {
   const soldTo = String(loja.codAdidas || "").trim();
   const daLoja = linhas.filter((x) => x.loja.id === loja.id);
   const porArtigo = new Map(daLoja.map((x) => [x.produto.artigo, x]));
@@ -74,7 +74,7 @@ export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opco
       a.tamanhos.forEach((t) => {
         const q = Number(x?.gradeEntregas[d]?.[t] || 0);
         pecas += q;
-        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, a.nome, a.eans[t] ?? null, a.lancamento, d, t, a.preco, q > 0 ? q : null]);
+        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, a.nome, a.eans[t] ?? null, a.lancamento, opcoes.datas?.[d] || d, t, a.preco, q > 0 ? q : null]);
       });
     });
   });

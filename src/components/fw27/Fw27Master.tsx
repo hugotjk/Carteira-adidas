@@ -9,18 +9,20 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import { salvarArquivo } from "../../lib/salvarArquivo";
+import manualUrl from "../../assets/manual-sugestao-fw27.pdf?url";
 import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
+import { criarFato, revisarFato, listarFatos, Fw27Fato, Visibilidade, EfeitoFato } from "../../services/fw27Fatos";
 import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
 import {
-  aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido, AUMENTO_VERBA,
+  aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  vendaEstoqueDe, refsComparaveis, PERIODO_VENDA_ESTOQUE, PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
+  precoBase, dataReal, limitesData, vendaEstoqueDe, refsComparaveis, PERIODO_VENDA_ESTOQUE, PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
-  { id: "indicadores", label: "Indicadores", icon: Activity },
+  { id: "indicadores", label: "Fatos relevantes", icon: Activity },
   { id: "representatividade", label: "Representatividade por Loja", icon: Store },
   { id: "sugestao", label: "Sugestão", icon: Lightbulb },
   { id: "resumo", label: "Resumo", icon: ClipboardList },
@@ -117,6 +119,63 @@ const NumInput: React.FC<{
   );
 };
 
+/** Cabeçalho de uma data de entrega: clicando, abre o calendário do mês para trocar o dia (vale na exportação). */
+const DataColuna: React.FC<{ d: string; pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; travado: boolean }> = ({ d, pedido, atualizar, travado }) => {
+  const [aberto, setAberto] = React.useState<{ x: number; y: number } | null>(null);
+  const real = dataReal(pedido, d);
+  const trocada = real !== d;
+  const { min, max } = limitesData(pedido, d);
+  const ano = Number(d.slice(0, 4)), mes = Number(d.slice(5, 7));
+  const dias = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  const vazios = new Date(Date.UTC(ano, mes - 1, 1)).getUTCDay();
+  const iso = (dia: number) => `${d.slice(0, 7)}-${String(dia).padStart(2, "0")}`;
+  const escolher = (nova: string) => {
+    atualizar((p) => {
+      const datas = { ...(p.datas || {}) };
+      if (nova === d) delete datas[d]; else datas[d] = nova;
+      return { ...p, datas };
+    });
+    setAberto(null);
+  };
+  return (
+    <>
+      <button
+        type="button" disabled={travado}
+        onClick={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setAberto(aberto ? null : { x: Math.min(r.left, window.innerWidth - 236), y: r.bottom + 4 }); }}
+        className={cn("w-full rounded-md py-1 hover:bg-gray-100", trocada && "bg-amber-50 text-amber-700")}
+        title={trocada ? `Data trocada (original ${diaMes(d)}). Clique para mudar.` : "Clique para mudar o dia desta entrega"}
+      >
+        <div className={cn(trocada ? "text-amber-700" : "text-gray-600")}>{real.slice(8, 10)}</div>
+        <div className="text-[9px]">{mesDe(real)}</div>
+      </button>
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setAberto(null)} />
+          <div className="fixed z-50 w-56 bg-white rounded-2xl shadow-xl border border-gray-200 p-3 text-left" style={{ left: aberto.x, top: aberto.y }}>
+            <div className="text-[11px] font-black mb-2 capitalize">{NOME_MES[d.slice(5, 7)] || mesDe(d)} {ano}</div>
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {["D", "S", "T", "Q", "Q", "S", "S"].map((x, k) => <div key={k} className="text-[9px] font-extrabold text-gray-400">{x}</div>)}
+              {Array.from({ length: vazios }).map((_, k) => <div key={"v" + k} />)}
+              {Array.from({ length: dias }).map((_, k) => {
+                const dia = iso(k + 1);
+                const ok = dia >= min && dia <= max;
+                return (
+                  <button key={dia} type="button" disabled={!ok} onClick={() => escolher(dia)}
+                    className={cn("h-7 rounded-lg text-[11px] font-bold", dia === real ? "bg-black text-white" : ok ? "hover:bg-gray-100 text-gray-800" : "text-gray-300 cursor-not-allowed", dia === d && dia !== real && "ring-1 ring-gray-300")}>
+                    {k + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[9px] text-gray-400 mt-2 font-semibold normal-case">Vale para todos os produtos desta coluna e na exportação.</p>
+            {trocada && <button type="button" onClick={() => escolher(d)} className="mt-2 w-full h-8 rounded-lg bg-gray-100 text-[10px] font-black">Voltar para {diaMes(d)}</button>}
+          </div>
+        </>
+      )}
+    </>
+  );
+};
+
 /** Venda (verde) × estoque (vermelho) do produto equivalente de 2026. */
 const VendaEst: React.FC<{ artigo: string; lojas: string[]; tamanho?: string; pequeno?: boolean }> = ({ artigo, lojas, tamanho, pequeno }) => {
   if (!refsComparaveis(artigo).length) return <span className="text-[9px] text-gray-300 font-bold" title="Sem produto equivalente em 2026">s/ comp.</span>;
@@ -130,12 +189,6 @@ const VendaEst: React.FC<{ artigo: string; lojas: string[]; tamanho?: string; pe
   );
 };
 
-/** Diferença entre o % atual e o sugerido, com cor. */
-const Desvio: React.FC<{ atual: number; sugerido: number }> = ({ atual, sugerido }) => {
-  const d = atual - sugerido;
-  const cls = Math.abs(d) < 1 ? "text-emerald-600" : Math.abs(d) < 3 ? "text-amber-600" : "text-red-600";
-  return <span className={cn("font-extrabold", cls)}>{d >= 0 ? "+" : "−"}{pct1(Math.abs(d)).replace("%", "")} p.p.</span>;
-};
 
 const Card: React.FC<{ className?: string; children: React.ReactNode }> = ({ className, children }) => (
   <div className={cn("bg-white rounded-3xl border border-gray-100 shadow-sm p-4", className)}>{children}</div>
@@ -187,6 +240,13 @@ const Fw27Master: React.FC = () => {
                 <span className={cn("text-[9px] font-black uppercase tracking-wider rounded-md px-1.5 py-0.5", travado ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500")}>
                   {travado ? "Enviado" : "Rascunho"}
                 </span>
+                <button
+                  onClick={async () => { try { const b = await (await fetch(manualUrl)).blob(); await salvarArquivo("Manual_Sugestao_FW27.pdf", b); } catch { window.open(manualUrl, "_blank"); } }}
+                  className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider rounded-md px-1.5 py-0.5 bg-black text-white hover:bg-gray-800"
+                  title="Baixar o manual da Sugestão FW27 (PDF)"
+                >
+                  <Download size={10} /> Manual
+                </button>
               </div>
             </div>
           </div>
@@ -288,13 +348,12 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-        <Kpi label="Verba total" value={brl(verba)} sub={pedido.lojas.length ? `${pedido.lojas.length} lojas` : "sem lojas ainda"} />
-        <Kpi label="No pedido (PDV)" value={brl(tot.valor)} sub={verba ? `${pct1((tot.valor / verba) * 100)} da verba` : "—"} />
-        <Kpi label="Peças" value={n0(tot.pecas)} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Kpi label="Verba sugerida" value={brl(verba)} sub={pedido.lojas.length ? `${pedido.lojas.length} lojas · no pedido ${verba ? pct1((tot.valor / verba) * 100) : "—"}` : "sem lojas ainda"} />
+        <Kpi label="Peças sugeridas" value={n0(tot.pecas)} />
         <Kpi label="vs venda jun–out/26" value={vendido ? `${tot.valor >= vendido ? "+" : "−"}${pct1(Math.abs((tot.valor / vendido - 1) * 100))}` : "—"} sub={vendido ? `vendido ${brl(vendido)}` : "lojas sem venda"} />
         <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over`} />
-        <Kpi label="Entregas" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(datasComPeca[0])} a ${diaMes(datasComPeca[datasComPeca.length - 1])}` : "jun a nov"} />
+        <Kpi label="Entregas" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(dataReal(pedido, datasComPeca[0]))} a ${diaMes(dataReal(pedido, datasComPeca[datasComPeca.length - 1]))}` : "jun a nov"} />
       </div>
 
       {!pedido.lojas.length && (
@@ -394,10 +453,10 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
           );
         })()}
         {abcAberto && (
-          <div className="mt-3 grid md:grid-cols-2 gap-x-6">
-            {abc.filter((x) => x.classe === abcAberto).map((x) => (
-              <div key={x.p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-1 border-t border-gray-50">
-                <span className="truncate">{x.p.artigo} · {x.p.descricao} <span className="text-gray-400 font-bold">· {x.p.subgrupo}</span></span>
+          <div className="mt-3 md:columns-2 gap-x-6">
+            {abc.map((x, i) => ({ ...x, n: i + 1 })).filter((x) => x.classe === abcAberto).map((x, i) => (
+              <div key={x.p.artigo} className={cn("flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-1 px-2 rounded break-inside-avoid", i % 2 ? "bg-gray-50" : "bg-white")}>
+                <span className="truncate"><span className="font-black text-gray-900">{x.n}</span> - {x.p.artigo} - {x.p.descricao} <span className="text-gray-400 font-bold">· {x.p.subgrupo}</span></span>
                 <span className="shrink-0"><span className="font-extrabold text-gray-900">{n0(x.q)} pçs</span> · {brl(x.valor)} · {pct1(x.pct)}</span>
               </div>
             ))}
@@ -407,29 +466,54 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
       </Card>
 
       <Card>
-        <h3 className="text-sm font-extrabold mb-3">Calendário de lançamentos</h3>
-        <div className="grid md:grid-cols-2 gap-x-6 gap-y-3">
-          {LANCAMENTOS.map((d) => {
-            const ps = PRODUTOS.filter((p) => p.lancamento === d);
-            const pecas = linhas.filter((x) => x.produto.lancamento === d).reduce((a, x) => a + x.qtd, 0);
-            return (
-              <div key={d} className="flex gap-3">
-                <div className="w-16 shrink-0">
-                  <div className="text-xs font-black">{diaMes(d)}</div>
-                  <div className="text-[10px] font-bold text-gray-400">{mesDe(d)} · {ps.length} refs</div>
-                  <div className="text-[10px] font-bold text-gray-500">{n0(pecas)} pçs</div>
-                </div>
-                <div className="flex flex-wrap gap-1.5 min-w-0">
-                  {ps.map((p) => (
-                    <span key={p.artigo} title={p.descricao} className="text-[10px] font-bold bg-gray-50 rounded-lg px-2 py-1">
-                      {p.artigo} <span className="text-gray-400 font-semibold">{p.subgrupo}</span>
-                    </span>
+        <h3 className="text-sm font-extrabold">Calendário de lançamentos</h3>
+        <p className="text-[10px] text-gray-400 mb-3">Por subgrupo, só os produtos novos (sem carry over).</p>
+        {(() => {
+          const ini = `${LANCAMENTOS.find((d) => d >= "2027-05-01")?.slice(0, 4) || "2027"}-05-01`;
+          const fim = ini.slice(0, 4) + "-11-30";
+          const pos = (d: string) => Math.min(100, Math.max(0, ((new Date(d).getTime() - new Date(ini).getTime()) / (new Date(fim).getTime() - new Date(ini).getTime())) * 100));
+          const mesesEixo = ["05", "06", "07", "08", "09", "10", "11"];
+          const subs = SUBGRUPOS.map((sg) => {
+            const ps = PRODUTOS.filter((p) => p.subgrupo === sg && p.carryOver !== "CARRY OVER");
+            const datas = Array.from(new Set(ps.map((p) => p.lancamento))).sort();
+            const pecas = linhas.filter((x) => x.produto.subgrupo === sg && x.produto.carryOver !== "CARRY OVER").reduce((a, x) => a + x.qtd, 0);
+            return { sg, ps, datas, pecas };
+          }).filter((x) => x.ps.length).sort((a, b) => a.datas[0].localeCompare(b.datas[0]));
+          return (
+            <div>
+              <div className="grid grid-cols-[7.5rem_1fr_7rem] gap-3 pb-1">
+                <span />
+                <div className="relative h-4">
+                  {mesesEixo.map((m) => (
+                    <span key={m} className="absolute text-[9px] font-extrabold text-gray-400 uppercase" style={{ left: `${pos(`${ini.slice(0, 4)}-${m}-01`)}%` }}>{(NOME_MES[m] || "Mai").slice(0, 3)}</span>
                   ))}
                 </div>
+                <span />
               </div>
-            );
-          })}
-        </div>
+              {subs.map(({ sg, ps, datas, pecas }) => (
+                <div key={sg} className="grid grid-cols-[7.5rem_1fr_7rem] gap-3 items-center py-2 border-t border-gray-50">
+                  <span className="text-[11px] font-extrabold uppercase truncate">{sg}</span>
+                  <div className="relative h-7">
+                    {mesesEixo.map((m) => <span key={m} className="absolute top-0 bottom-0 border-l border-gray-100" style={{ left: `${pos(`${ini.slice(0, 4)}-${m}-01`)}%` }} />)}
+                    <span className="absolute top-1/2 h-0.5 bg-gray-200 -translate-y-1/2" style={{ left: `${pos(datas[0])}%`, right: 0 }} />
+                    {datas.reduce<string[][]>((g, d) => {
+                      // Datas muito próximas (ex.: 30/07 e 01/08) viram um ponto só, com as duas datas.
+                      const ult = g[g.length - 1];
+                      if (ult && (new Date(d).getTime() - new Date(ult[0]).getTime()) / 86400000 < 12) ult.push(d); else g.push([d]);
+                      return g;
+                    }, []).map((g) => (
+                      <span key={g[0]} className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center" style={{ left: `${pos(g[0])}%` }}>
+                        <span className="w-2.5 h-2.5 rounded-full bg-black" />
+                        <span className="text-[9px] font-black mt-0.5 whitespace-nowrap">{g.map(diaMes).join(" e ")}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-500 text-right">{ps.length} novas · {n0(pecas)} pçs</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </Card>
     </div>
   );
@@ -438,12 +522,12 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
 /** Avisos da coleção (vindos da adidas / do comercial). */
 const AVISOS: [string, string][] = [
   ["Compra", "entregas de junho a novembro de 2027"],
-  ["Prazo de digitação", "15/11/2026"],
-  ["Cancelamento de carteira", "limite de 5% por coleção"],
+  ["Prazo para digitação no CLICK", "15/11/2026"],
+  ["Cancelamento de carteira", "novo limite de cancelamento de até 5% por coleção"],
   ["Grade", "ajustada por loja, pela venda de cada uma"],
-  ["Preços", "camisa de jogo volta para R$ 449,99 e cropped para R$ 399,99"],
-  ["Linha OG", "linha de viagem dos jogadores no 2º semestre"],
-  ["Verba", "respeitar a capacidade financeira da loja, não só o potencial de venda"],
+  ["Preços", "Manto Torcedor mantido em R$ 449,99 e Cropped em R$ 399,99"],
+  ["Linha OG", "será utilizada pelos jogadores como uniforme de viagem durante o FW27"],
+  ["Verba de compra", "respeitar a capacidade financeira e o limite de crédito de cada loja, considerando não apenas o potencial de venda, mas também a saúde financeira da operação"],
 ];
 
 // ======================== REPRESENTATIVIDADE ========================
@@ -505,14 +589,14 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
   return (
     <div className="space-y-4">
       <Card className="bg-black text-white border-black">
-        <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Verba FW27 total (a preço PDV)</div>
+        <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">Verba FW27 total (a custo)</div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-2xl font-black">R$</span>
           <NumInput ariaLabel="Verba total" value={verbaTotal} disabled={travado} onCommit={setVerbaTotal}
             className="flex-1 bg-white/10 text-white text-2xl md:text-3xl h-12 text-left px-3 focus:ring-white/30" />
         </div>
         <div className="text-[11px] text-gray-400 mt-2">
-          Sugerida: {brl(sugTotal)} = vendido pelas lojas do pedido em jun–out/2026 + {Math.round(AUMENTO_VERBA * 100)}%.
+          Sugerida: {brl(sugTotal)} = vendido pelas lojas do pedido em jun–out/2026 + 150% da média mensal.
           {!travado && Math.abs(verbaTotal - sugTotal) >= 1 && (
             <button onClick={() => atualizar((p) => { const { verbaTotal: _v, ...r } = p; return r as Fw27Pedido; })} className="ml-2 font-black text-white underline">Usar a sugerida</button>
           )}
@@ -546,7 +630,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
                     className="w-24 shrink-0 bg-gray-50 rounded-md px-1.5 h-6 text-[10px] font-bold text-gray-600 outline-none focus:ring-2 focus:ring-black/10" />
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 mt-0.5">
-                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>sugerido {pct1(pctSugL[l.id] || 0)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
+                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>sugerido {pct1(pctSugL[l.id] || 0)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)}
                 </div>
               </div>
               <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={pctL[l.id] || 0} disabled={travado} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
@@ -589,7 +673,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
         <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem] gap-2 pb-2 text-[9px] font-extrabold text-gray-400 uppercase tracking-wider">
           <span>Subgrupo</span><span className="text-center">%</span><span className="text-right">No pedido</span>
         </div>
-        {SUBGRUPOS.map((pk) => {
+        {[...SUBGRUPOS].sort((a, b) => (pct[b] || 0) - (pct[a] || 0) || SUBGRUPOS.indexOf(a) - SUBGRUPOS.indexOf(b)).map((pk) => {
           const t = tot.porPack[pk];
           return (
             <div key={pk} className="grid grid-cols-[minmax(0,1fr)_4.5rem_6.5rem] gap-2 items-center py-2 border-t border-gray-50">
@@ -599,7 +683,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
               </div>
               <NumInput ariaLabel={`% do subgrupo ${pk}`} decimals={1} value={pct[pk] || 0} disabled={travado} onCommit={(v) => setPack(pk, v)} className="w-full" />
               <div className="text-right text-[10px] font-bold text-gray-500">
-                {pct1(t?.pctAtual || 0)}{t && t.valor > 0 && <div><Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></div>}
+                {pct1(t?.pctAtual || 0)} <span className="text-gray-400">das peças</span>
               </div>
             </div>
           );
@@ -892,7 +976,13 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
 
   const q = busca.trim().toUpperCase();
   const visiveis = PRODUTOS.filter((p) => (filtro === "TODOS" || p.subgrupo === filtro) && (!q || p.artigo.includes(q) || p.descricao.includes(q)));
-  const grupos = SUBGRUPOS.map((pk) => ({ pk, ps: visiveis.filter((p) => p.subgrupo === pk) })).filter((g) => g.ps.length);
+  // Do mais comprado para o menos: subgrupos e, dentro deles, os produtos (muda na hora quando a quantidade muda).
+  const qtdProd: Record<string, number> = {};
+  linhas.forEach((x) => { qtdProd[x.produto.artigo] = (qtdProd[x.produto.artigo] || 0) + x.qtd; });
+  const qtdSub = (pk: string) => PRODUTOS.filter((p) => p.subgrupo === pk).reduce((a, p) => a + (qtdProd[p.artigo] || 0), 0);
+  const grupos = [...SUBGRUPOS].sort((a, b) => qtdSub(b) - qtdSub(a) || SUBGRUPOS.indexOf(a) - SUBGRUPOS.indexOf(b))
+    .map((pk) => ({ pk, ps: visiveis.filter((p) => p.subgrupo === pk).sort((a, b) => (qtdProd[b.artigo] || 0) - (qtdProd[a.artigo] || 0)) }))
+    .filter((g) => g.ps.length);
 
   return (
     <div className="space-y-4">
@@ -905,7 +995,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
               <div key={l.id} className="shrink-0 bg-gray-50 rounded-2xl px-3 py-2 min-w-[8.5rem]">
                 <div className="text-[10px] font-extrabold truncate">{l.nome}</div>
                 <div className="text-sm font-black">{pct1(t?.pctAtual || 0)} <span className="text-[10px] font-bold text-gray-400">/ {pct1(t?.pctSugerido || 0)}</span></div>
-                <div className="text-[10px] font-semibold text-gray-500">{n0(t?.pecas || 0)} pçs · <Desvio atual={t?.pctAtual || 0} sugerido={t?.pctSugerido || 0} /></div>
+                <div className="text-[10px] font-semibold text-gray-500">{n0(t?.pecas || 0)} pçs</div>
               </div>
             );
           })}
@@ -948,9 +1038,8 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Total</th>
                     <th className={cn("font-extrabold px-1 py-2 border-b border-gray-100", celW)}>Sug.</th>
                     {colunas.map((d, i) => (
-                      <th key={d} className={cn("font-extrabold px-1 py-2 border-b border-gray-100", sepMes(i), celW)}>
-                        <div className="text-gray-600">{d.slice(8, 10)}</div>
-                        <div className="text-[9px]">{mesDe(d)}</div>
+                      <th key={d} className={cn("font-extrabold px-0.5 py-1 border-b border-gray-100", sepMes(i), celW)}>
+                        <DataColuna d={d} pedido={pedido} atualizar={atualizar} travado={travado} />
                       </th>
                     ))}
                   </tr>
@@ -987,7 +1076,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                       {editado && <span className="text-[8px] font-black rounded px-1 py-0.5 bg-amber-50 text-amber-700">EDIT.</span>}
                                     </div>
                                     <div className="text-[10px] md:text-[11px] font-extrabold leading-tight line-clamp-2">{p.descricao}</div>
-                                    <div className="text-[9px] font-bold text-blue-700">R$ {p.preco.toFixed(2).replace(".", ",")} {open ? "▲" : "▼"}</div>
+                                    <div className="text-[9px] font-bold text-blue-700">PDV R$ {p.preco.toFixed(2).replace(".", ",")} <span className="text-gray-400">· Custo aprox. R$ {precoBase(p).toFixed(2).replace(".", ",")}</span> {open ? "▲" : "▼"}</div>
                                   </div>
                                 </div>
                               </td>
@@ -1096,24 +1185,24 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
 
 function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   const head = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "000000" } } };
-  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "GRUPO", "LINHA", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "VALOR PDV"]];
+  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "GRUPO", "LINHA", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "CUSTO APROX.", "VALOR CUSTO APROX."]];
   linhas.forEach((x) => {
     if (!x.qtd) return;
     const ge = gradePorEntrega(x.produto, x.grade, x.entregas);
     Object.keys(ge).sort().forEach((d) => {
       x.produto.tamanhos.forEach((t) => {
         const q = Number(ge[d][t] || 0);
-        if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, grupoDe(x.produto), linhaDe(x.produto), dataBR(d), t, q, x.produto.preco, q * x.produto.preco]);
+        if (q > 0) itens.push([x.loja.nome, x.produto.artigo, x.produto.descricao, x.produto.subgrupo, grupoDe(x.produto), linhaDe(x.produto), dataBR(dataReal(pedido, d)), t, q, x.produto.preco, precoBase(x.produto), Math.round(q * precoBase(x.produto) * 100) / 100]);
       });
     });
   });
-  const res: any[][] = [["LOJA", "VERBA", "PEÇAS", "VALOR PDV", "% NO PEDIDO"]];
+  const res: any[][] = [["LOJA", "VERBA (CUSTO)", "PEÇAS", "VALOR CUSTO APROX.", "% NO PEDIDO"]];
   const tot = totais(pedido, linhas);
   pedido.lojas.forEach((l) => { const t = tot.porLoja[l.id]; res.push([l.nome, l.verba, t.pecas, t.valor, Math.round(t.pctAtual * 10) / 10]); });
   res.push(["TOTAL", tot.verba, tot.pecas, tot.valor, 100]);
 
   const wb = XLSX.utils.book_new();
-  [["ITENS", itens, [16, 10, 44, 14, 22, 12, 12, 9, 7, 11, 12]], ["RESUMO_LOJAS", res, [20, 14, 10, 14, 12]]].forEach(([nome, dados, larg]: any) => {
+  [["ITENS", itens, [16, 10, 44, 14, 22, 12, 12, 9, 7, 11, 10, 12]], ["RESUMO_LOJAS", res, [20, 14, 10, 14, 12]]].forEach(([nome, dados, larg]: any) => {
     const ws = XLSX.utils.aoa_to_sheet(dados);
     ws["!cols"] = larg.map((w: number) => ({ wch: w }));
     (dados[0] as any[]).forEach((_: any, c: number) => { const ref = XLSX.utils.encode_cell({ r: 0, c }); if (ws[ref]) ws[ref].s = head; });
@@ -1143,7 +1232,7 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
   const [msg, setMsg] = React.useState<Record<string, string>>({});
   const baixar = async (l: Fw27Loja) => {
     try {
-      const r = exportarLojaFornecedor(l, linhas);
+      const r = exportarLojaFornecedor(l, linhas, { datas: pedido.datas });
       const st = await salvarArquivo(r.nomeArquivo, r.blob);
       if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id], user?.uid)); onRegistro(); }
       const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs não estão no carrinho do site` : "";
@@ -1257,8 +1346,8 @@ const AgrupadoCard: React.FC<{ linhas: Fw27Linha[] }> = ({ linhas }) => {
           </button>
           {aberto(g.k) && (
             <div className="pb-2 pl-4">
-              {g.refs.map(({ p, q, valor }) => (
-                <div key={p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-0.5">
+              {g.refs.map(({ p, q, valor }, ri) => (
+                <div key={p.artigo} className={cn("flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-1 px-2 rounded", ri % 2 ? "bg-gray-50" : "bg-white")}>
                   <span className="truncate">{p.artigo} · {p.descricao} {visao !== "subgrupo" && <span className="text-gray-400 font-bold">· {p.subgrupo}</span>}</span>
                   <span className="shrink-0"><span className="font-extrabold text-gray-900">{n0(q)}</span> <span className="text-gray-400">· {brl(valor)}</span></span>
                 </div>
@@ -1298,7 +1387,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         <Kpi label="Peças" value={n0(pecas)} />
-        <Kpi label="Valor a PDV" value={brl(valor)} />
+        <Kpi label="Valor a custo" value={brl(valor)} />
         <Kpi label="Da verba" value={verba ? pct1((valor / verba) * 100) : "—"} sub={`verba ${brl(verba)}`} />
       </div>
       <Card>
@@ -1308,7 +1397,7 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
             <div key={d} className="flex-1 min-w-[2.25rem] flex flex-col items-center justify-end h-full gap-1">
               <div className="text-[9px] font-extrabold">{n0(q)}</div>
               <div className="w-full bg-black rounded-t" style={{ height: `${(q / maxE) * 70}%`, minHeight: q ? 2 : 0 }} />
-              <div className="text-[8px] font-extrabold text-gray-400">{diaMes(d)}</div>
+              <div className="text-[8px] font-extrabold text-gray-400">{diaMes(dataReal(pedido, d))}</div>
             </div>
           ))}
         </div>
@@ -1386,13 +1475,13 @@ const INDICADORES: Indicador[] = [
   {
     tipo: "Produto", titulo: "Camisas com Betano em promoção", quando: "set–out/2026",
     aconteceu: "As versões com patrocínio entraram em promoção. A Third 2026 (lançada em julho) só existiu com Betano.",
-    medido: "Preço médio da Third c/ Betano: R$ 446 em ago → R$ 332 em out. Home e Away c/ Betano: ~R$ 445 → ~R$ 320. As versões sem patrocínio ficaram em ~R$ 443.", efeito: "alta",
+    medido: "Third com Betano: de R$ 449,99 para R$ 329,99 em outubro. Home e Away com Betano também entraram em promoção; as versões sem patrocínio continuaram a R$ 449,99.", efeito: "alta",
     ajustar: "Quantidade da torcedor III",
   },
   {
     tipo: "Produto", titulo: "Preço da Pro (antiga Authentic)", quando: "FW27",
-    aconteceu: "Pro FW27 a R$ 899,99. Authentic 2026 vendeu a preço médio de R$ 788.",
-    medido: "+14% no preço médio. Torcedor (R$ 449,99) e Fanshirt (R$ 229,99) iguais a 2026.", efeito: "baixa",
+    aconteceu: "Pro FW27 a R$ 899,99. A Authentic 2026 custava R$ 799,99.",
+    medido: "+12,5% no preço. Torcedor (R$ 449,99) e Fanshirt (R$ 229,99) iguais a 2026.", efeito: "baixa",
     ajustar: "Quantidade da Pro",
   },
 ];
@@ -1401,6 +1490,135 @@ const MESES_IND = [
   { m: "Jun", a25: 63898, a26: 52804 }, { m: "Jul", a25: 56039, a26: 36019 }, { m: "Ago", a25: 104186, a26: 71279 },
   { m: "Set", a25: 47840, a26: 48117 }, { m: "Out", a25: 66194, a26: 36242, parcial: true }, { m: "Nov", a25: 103318, a26: 0 },
 ];
+
+/** Fatos enviados pelos usuários: cada um propõe; master/admin aceita, recusa, edita e escolhe quem vê. */
+const FatosUsuarios: React.FC<{ icone: (e: Efeito) => React.ReactNode; cor: (e: Efeito) => string }> = ({ icone, cor }) => {
+  const { user, userProfile } = useAuth();
+  const admin = userProfile?.role === "master" || userProfile?.role === "admin" || user?.email === "hugotjk2@gmail.com";
+  const [fatos, setFatos] = React.useState<Fw27Fato[]>([]);
+  const [novo, setNovo] = React.useState(false);
+  const [form, setForm] = React.useState({ titulo: "", quando: "", texto: "", efeito: "neutro" as EfeitoFato });
+  const [enviando, setEnviando] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+  const [editando, setEditando] = React.useState<string | null>(null);
+  const [rascunho, setRascunho] = React.useState<{ titulo: string; texto: string; visibilidade: Visibilidade }>({ titulo: "", texto: "", visibilidade: "todos" });
+
+  React.useEffect(() => {
+    let vivo = true;
+    listarFatos({ uid: user?.uid, admin }).then((f) => vivo && setFatos((atual) => {
+      const m = new Map(atual.map((x) => [x.id, x]));
+      f.forEach((x) => m.set(x.id, x));
+      return Array.from(m.values()).sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
+    }));
+    return () => { vivo = false; };
+  }, [user?.uid, admin]);
+
+  const enviar = async () => {
+    if (!form.titulo.trim() || !form.texto.trim() || !user) { setMsg("Preencha o título e o que aconteceu."); return; }
+    setEnviando(true); setMsg("");
+    try {
+      const f = await criarFato({ ...form, titulo: form.titulo.trim(), texto: form.texto.trim(), quando: form.quando.trim() }, { uid: user.uid, email: user.email || "" });
+      setFatos((x) => [f, ...x]);
+      setForm({ titulo: "", quando: "", texto: "", efeito: "neutro" });
+      setNovo(false);
+      setMsg("Enviado! Aparece para os outros depois que o master ou um admin aprovar.");
+    } catch {
+      setMsg("Não consegui enviar agora. Tente de novo.");
+    } finally { setEnviando(false); }
+  };
+  const revisar = async (f: Fw27Fato, mud: Partial<Fw27Fato>) => {
+    try {
+      const n = await revisarFato(f, mud, user?.email || "");
+      setFatos((x) => x.map((y) => (y.id === f.id ? n : y)));
+      setEditando(null);
+    } catch { setMsg("Não consegui salvar a revisão."); }
+  };
+
+  const visiveis = fatos.filter((f) => admin || f.status === "aprovado" || f.autorUid === user?.uid);
+  const selo = (f: Fw27Fato) => f.status === "pendente" ? "bg-amber-50 text-amber-700" : f.status === "recusado" ? "bg-red-50 text-red-600" : f.visibilidade === "todos" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700";
+  const textoSelo = (f: Fw27Fato) => f.status === "pendente" ? "aguardando aprovação" : f.status === "recusado" ? "recusado" : f.visibilidade === "todos" ? "visível para todos" : "só para quem criou";
+  const campo = "w-full bg-gray-50 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-black/10";
+
+  return (
+    <>
+      {visiveis.map((f) => (
+        <Card key={f.id} className="flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[9px] font-extrabold uppercase tracking-wider text-gray-400">Enviado por usuário{f.quando ? ` · ${f.quando}` : ""}</div>
+              <div className="text-sm font-extrabold leading-tight mt-0.5">{f.titulo}</div>
+            </div>
+            <span className={cn("shrink-0 flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-black uppercase", cor(f.efeito))}>
+              {icone(f.efeito)} {f.efeito === "baixa" ? "derrubou" : f.efeito === "alta" ? "puxou" : "atenção"}
+            </span>
+          </div>
+          {editando === f.id ? (
+            <div className="space-y-2">
+              <input className={campo} value={rascunho.titulo} onChange={(e) => setRascunho({ ...rascunho, titulo: e.target.value })} aria-label="Título" />
+              <textarea className={cn(campo, "min-h-20")} value={rascunho.texto} onChange={(e) => setRascunho({ ...rascunho, texto: e.target.value })} aria-label="Texto" />
+              <div className="flex gap-2 text-[11px] font-bold">
+                {(["todos", "autor"] as const).map((v) => (
+                  <label key={v} className="flex items-center gap-1 cursor-pointer">
+                    <input type="radio" className="accent-black" checked={rascunho.visibilidade === v} onChange={() => setRascunho({ ...rascunho, visibilidade: v })} />
+                    {v === "todos" ? "Todos os usuários" : "Só quem criou"}
+                  </label>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => revisar(f, { status: "aprovado", titulo: rascunho.titulo.trim() || f.titulo, texto: rascunho.texto.trim() || f.texto, visibilidade: rascunho.visibilidade })}
+                  className="flex-1 h-9 rounded-xl bg-emerald-600 text-white text-[11px] font-black">Aceitar</button>
+                <button onClick={() => revisar(f, { status: "recusado" })} className="flex-1 h-9 rounded-xl bg-white border border-gray-200 text-[11px] font-black text-red-600">Recusar</button>
+                <button onClick={() => setEditando(null)} className="h-9 px-3 rounded-xl bg-gray-100 text-[11px] font-black">Cancelar</button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-600 whitespace-pre-line">{f.texto}</p>
+          )}
+          <div className="mt-auto pt-1 flex items-center justify-between gap-2 text-[10px] font-bold text-gray-400">
+            <span className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase", selo(f))}>{textoSelo(f)}</span>
+            {admin && editando !== f.id && (
+              <span className="flex items-center gap-2">
+                <span className="truncate max-w-[10rem]" title={f.autorEmail}>{f.autorEmail}</span>
+                <button onClick={() => { setEditando(f.id); setRascunho({ titulo: f.titulo, texto: f.texto, visibilidade: f.visibilidade === "autor" && f.status === "pendente" ? "todos" : f.visibilidade }); }}
+                  className="text-blue-700 hover:underline">{f.status === "pendente" ? "revisar →" : "editar"}</button>
+              </span>
+            )}
+          </div>
+        </Card>
+      ))}
+
+      <Card className="flex flex-col gap-2 border-dashed border-gray-300">
+        {!novo ? (
+          <button onClick={() => { setNovo(true); setMsg(""); }} className="flex flex-col items-center justify-center gap-1 py-6 text-gray-500 hover:text-black">
+            <Plus size={20} />
+            <span className="text-sm font-extrabold">Adicionar fato relevante</span>
+            <span className="text-[10px] font-semibold text-gray-400">Algo que mexeu na venda e todo mundo deveria saber. Passa por aprovação.</span>
+          </button>
+        ) : (
+          <>
+            <div className="text-sm font-extrabold">Novo fato relevante</div>
+            <input className={campo} placeholder="Título (ex.: Loja em reforma em agosto)" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} aria-label="Título do fato" />
+            <input className={campo} placeholder="Quando (ex.: 10/08 a 25/08/2026)" value={form.quando} onChange={(e) => setForm({ ...form, quando: e.target.value })} aria-label="Quando" />
+            <textarea className={cn(campo, "min-h-20")} placeholder="O que aconteceu e o efeito na venda" value={form.texto} onChange={(e) => setForm({ ...form, texto: e.target.value })} aria-label="O que aconteceu" />
+            <div className="flex gap-1.5">
+              {(["baixa", "alta", "neutro"] as const).map((e) => (
+                <button key={e} type="button" onClick={() => setForm({ ...form, efeito: e })}
+                  className={cn("flex-1 h-8 rounded-lg text-[10px] font-black uppercase border", form.efeito === e ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>
+                  {e === "baixa" ? "Derrubou" : e === "alta" ? "Puxou" : "Atenção"}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={enviar} disabled={enviando} className="flex-1 h-9 rounded-xl bg-black text-white text-[11px] font-black disabled:opacity-50">{enviando ? "Enviando…" : "Enviar para aprovação"}</button>
+              <button onClick={() => setNovo(false)} className="h-9 px-3 rounded-xl bg-gray-100 text-[11px] font-black">Cancelar</button>
+            </div>
+          </>
+        )}
+        {msg && <p className="text-[10px] font-bold text-gray-500">{msg}</p>}
+      </Card>
+    </>
+  );
+};
 
 const IndicadoresTab: React.FC<{ onIr: (s: SectionId) => void }> = ({ onIr }) => {
   const [tipo, setTipo] = React.useState("TODOS");
@@ -1461,8 +1679,9 @@ const IndicadoresTab: React.FC<{ onIr: (s: SectionId) => void }> = ({ onIr }) =>
             </div>
           </Card>
         ))}
+        {tipo === "TODOS" && <FatosUsuarios icone={icone} cor={cor} />}
       </div>
-      <p className="text-[10px] text-gray-400 px-2">Os indicadores não mudam a sugestão sozinhos: servem para você decidir se mexe na curva, na verba ou nas quantidades.</p>
+      <p className="text-[10px] text-gray-400 px-2">Os fatos relevantes não mudam a sugestão sozinhos: servem para você decidir se mexe na curva, na verba ou nas quantidades.</p>
     </div>
   );
 };

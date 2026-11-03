@@ -5,7 +5,7 @@ e da lista loja → gestor → código adidas (fw27/loja-gestor.csv do projeto).
 Uso:
   python3 scripts/vendas-para-json.py <pasta com VENDAS_MES_DBSLEEK.csv, PRODUTOS_DBSLEEK.csv, loja-gestor.csv>
 
-O arquivo sai com percentuais e, por loja, o R$ vendido jun–out/2026 (base da verba sugerida):
+O arquivo sai com percentuais e, por loja, o R$ vendido jun–out/2026 A CUSTO (CMV), base da verba sugerida:
   lojas      → por loja: gestor, código adidas, % nas vendas jun–out/2026 (pct), % nos últimos 90 dias
                ago–out/2026 (pct90) e R$ vendido jun–out/2026 (venda)
   subgrupos  → % de cada subgrupo da AMD nas vendas de jun–out/2026 (referência)
@@ -57,11 +57,11 @@ v = v.merge(p, on="REFERENCIA_FORNECEDOR", how="left")
 lg["LOJA_APP"] = lg.LOJA.map(lojaApp)
 lista = lg.drop_duplicates("LOJA_APP")
 v26 = v[(v.MES >= "2026-06") & (v.MES <= "2026-10")]
-venda = v26[v26.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").VENDA.sum()
+venda = v26[v26.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").CMV.sum()  # em CUSTO (CMV)
 tot = venda.sum()
 # últimos 90 dias: ago, set e out/2026
 v90 = v[(v.MES >= "2026-08") & (v.MES <= "2026-10")]
-venda90 = v90[v90.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").VENDA.sum()
+venda90 = v90[v90.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").CMV.sum()
 tot90 = venda90.sum()
 lojas = []
 for _, r in lista.iterrows():
@@ -69,10 +69,18 @@ for _, r in lista.iterrows():
         "nome": r.LOJA_APP, "gestor": r.GESTOR.strip(), "codAdidas": r.COD_ADIDAS.strip(),
         "pct": round(float(venda.get(r.LOJA_APP, 0)) / tot * 100, 4),
         "pct90": round(float(venda90.get(r.LOJA_APP, 0)) / tot90 * 100, 4),
-        # R$ vendido jun–out/2026 (base da verba sugerida: + 10%)
+        # R$ vendido jun–out/2026 a CUSTO (CMV) — base da verba sugerida
         "venda": round(float(venda.get(r.LOJA_APP, 0)), 2),
     })
 lojas.sort(key=lambda x: -x["pct"])
+
+# Lojas de DEMONSTRAÇÃO (apresentação aos franqueados): copiam os números de lojas medianas da rede,
+# sem mostrar de qual vieram. Mediana, um pouco menor e um pouco menor (por CMV jun–out/2026).
+DEMO = {"DEMO FLA 01": "NRN FRIBURGO GARRA", "DEMO FLA 02": "NRN RESENDE", "DEMO FLA 03": "NIG CAL FLA"}
+porNome = {l["nome"]: l for l in lojas}
+for i, (demo, origem) in enumerate(DEMO.items(), start=1):
+    o = porNome[origem]
+    lojas.append({"nome": demo, "gestor": "DEMONSTRACAO", "codAdidas": f"700000000{i}", "pct": o["pct"], "pct90": o["pct90"], "venda": o["venda"]})
 
 # ---------- subgrupos (referência) ----------
 SUBS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"]
@@ -115,12 +123,19 @@ for pf, d in base.groupby("PERFIL"):
         K = 30
         mix = (q + K * geral / geral.sum())
         g[loja] = {t: int(round(x / mix.sum() * 1000)) for t, x in mix.items()}
+    for demo, origem in DEMO.items():
+        if origem in g: g[demo] = g[origem]
     grade[pf] = g
 
+# Custo ÷ preço PDV da camisa torcedor Home 2026 (R$ 449,99) antes das promoções (jun–ago/26):
+# usado para estimar o custo dos artigos FW27 enquanto não temos a tabela de preço de compra.
+t = v[(v.REFERENCIA_FORNECEDOR == "JM5651") & (v.MES >= "2026-06") & (v.MES <= "2026-08")]
+fator_custo = round(float(t.CMV.sum() / t.PECAS.sum() / 449.99), 4)
+print("fator custo", fator_custo)
 json.dump({
     "fonte": "DBSleek · vendas ativas (sem tipo 6) · lojas jun–out/2026 · grade jun–nov/2025 + jun–out/2026",
     "geradoEm": date.today().isoformat(),
-    "lojas": lojas, "subgrupos": subgrupos, "curva": curva, "grade": grade,
+    "fatorCusto": fator_custo, "lojas": lojas, "subgrupos": subgrupos, "curva": curva, "grade": grade,
 }, open(saida, "w"), ensure_ascii=False, separators=(",", ":"))
 print("lojas", len(lojas), "com venda", sum(1 for l in lojas if l["pct"] > 0))
 print("subgrupos", subgrupos)

@@ -83,6 +83,12 @@ if len(sys.argv) > 2:
     e["ESTOQUE"] = e.ESTOQUE.clip(lower=0)
     saida["estoque"] = tabela(e, "ESTOQUE")
     saida["periodo"] += " · estoque em " + (sys.argv[3] if len(sys.argv) > 3 else Path(sys.argv[2]).stem)
+# Lojas de demonstração copiam os números das lojas de origem (ver scripts/vendas-para-json.py).
+DEMO = {"DEMO FLA 01": "NRN FRIBURGO GARRA", "DEMO FLA 02": "NRN RESENDE", "DEMO FLA 03": "NIG CAL FLA"}
+for tab in [saida["venda"], saida.get("estoque") or {}]:
+    for art, porLoja in tab.items():
+        for demo, origem in DEMO.items():
+            if origem in porLoja: porLoja[demo] = porLoja[origem]
 destino = Path(__file__).resolve().parent.parent / "src" / "data" / "fw27VendaEstoque.json"
 json.dump(saida, open(destino, "w"), ensure_ascii=False, separators=(",", ":"))
 print(destino, destino.stat().st_size, "bytes;", len(saida["venda"]), "artigos com venda")
