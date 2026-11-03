@@ -20,7 +20,7 @@ import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
-  { id: "indicadores", label: "Indicadores", icon: Activity },
+  { id: "indicadores", label: "Fatos relevantes", icon: Activity },
   { id: "representatividade", label: "Representatividade por Loja", icon: Store },
   { id: "sugestao", label: "Sugestão", icon: Lightbulb },
   { id: "resumo", label: "Resumo", icon: ClipboardList },
@@ -288,9 +288,8 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-        <Kpi label="Verba total" value={brl(verba)} sub={pedido.lojas.length ? `${pedido.lojas.length} lojas` : "sem lojas ainda"} />
-        <Kpi label="No pedido (PDV)" value={brl(tot.valor)} sub={verba ? `${pct1((tot.valor / verba) * 100)} da verba` : "—"} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Kpi label="Verba total" value={brl(verba)} sub={pedido.lojas.length ? `${pedido.lojas.length} lojas · no pedido ${verba ? pct1((tot.valor / verba) * 100) : "—"}` : "sem lojas ainda"} />
         <Kpi label="Peças" value={n0(tot.pecas)} />
         <Kpi label="vs venda jun–out/26" value={vendido ? `${tot.valor >= vendido ? "+" : "−"}${pct1(Math.abs((tot.valor / vendido - 1) * 100))}` : "—"} sub={vendido ? `vendido ${brl(vendido)}` : "lojas sem venda"} />
         <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over`} />
@@ -394,10 +393,10 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
           );
         })()}
         {abcAberto && (
-          <div className="mt-3 grid md:grid-cols-2 gap-x-6">
-            {abc.filter((x) => x.classe === abcAberto).map((x) => (
-              <div key={x.p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-1 border-t border-gray-50">
-                <span className="truncate">{x.p.artigo} · {x.p.descricao} <span className="text-gray-400 font-bold">· {x.p.subgrupo}</span></span>
+          <div className="mt-3 md:columns-2 gap-x-6">
+            {abc.map((x, i) => ({ ...x, n: i + 1 })).filter((x) => x.classe === abcAberto).map((x) => (
+              <div key={x.p.artigo} className="flex justify-between gap-2 text-[10px] font-semibold text-gray-500 py-1 border-t border-gray-50 break-inside-avoid">
+                <span className="truncate"><span className="font-black text-gray-900">{x.n}</span> - {x.p.artigo} - {x.p.descricao} <span className="text-gray-400 font-bold">· {x.p.subgrupo}</span></span>
                 <span className="shrink-0"><span className="font-extrabold text-gray-900">{n0(x.q)} pçs</span> · {brl(x.valor)} · {pct1(x.pct)}</span>
               </div>
             ))}
@@ -407,29 +406,54 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
       </Card>
 
       <Card>
-        <h3 className="text-sm font-extrabold mb-3">Calendário de lançamentos</h3>
-        <div className="grid md:grid-cols-2 gap-x-6 gap-y-3">
-          {LANCAMENTOS.map((d) => {
-            const ps = PRODUTOS.filter((p) => p.lancamento === d);
-            const pecas = linhas.filter((x) => x.produto.lancamento === d).reduce((a, x) => a + x.qtd, 0);
-            return (
-              <div key={d} className="flex gap-3">
-                <div className="w-16 shrink-0">
-                  <div className="text-xs font-black">{diaMes(d)}</div>
-                  <div className="text-[10px] font-bold text-gray-400">{mesDe(d)} · {ps.length} refs</div>
-                  <div className="text-[10px] font-bold text-gray-500">{n0(pecas)} pçs</div>
-                </div>
-                <div className="flex flex-wrap gap-1.5 min-w-0">
-                  {ps.map((p) => (
-                    <span key={p.artigo} title={p.descricao} className="text-[10px] font-bold bg-gray-50 rounded-lg px-2 py-1">
-                      {p.artigo} <span className="text-gray-400 font-semibold">{p.subgrupo}</span>
-                    </span>
+        <h3 className="text-sm font-extrabold">Calendário de lançamentos</h3>
+        <p className="text-[10px] text-gray-400 mb-3">Por subgrupo, só os produtos novos (sem carry over).</p>
+        {(() => {
+          const ini = `${LANCAMENTOS.find((d) => d >= "2027-05-01")?.slice(0, 4) || "2027"}-05-01`;
+          const fim = ini.slice(0, 4) + "-11-30";
+          const pos = (d: string) => Math.min(100, Math.max(0, ((new Date(d).getTime() - new Date(ini).getTime()) / (new Date(fim).getTime() - new Date(ini).getTime())) * 100));
+          const mesesEixo = ["05", "06", "07", "08", "09", "10", "11"];
+          const subs = SUBGRUPOS.map((sg) => {
+            const ps = PRODUTOS.filter((p) => p.subgrupo === sg && p.carryOver !== "CARRY OVER");
+            const datas = Array.from(new Set(ps.map((p) => p.lancamento))).sort();
+            const pecas = linhas.filter((x) => x.produto.subgrupo === sg && x.produto.carryOver !== "CARRY OVER").reduce((a, x) => a + x.qtd, 0);
+            return { sg, ps, datas, pecas };
+          }).filter((x) => x.ps.length).sort((a, b) => a.datas[0].localeCompare(b.datas[0]));
+          return (
+            <div>
+              <div className="grid grid-cols-[7.5rem_1fr_7rem] gap-3 pb-1">
+                <span />
+                <div className="relative h-4">
+                  {mesesEixo.map((m) => (
+                    <span key={m} className="absolute text-[9px] font-extrabold text-gray-400 uppercase" style={{ left: `${pos(`${ini.slice(0, 4)}-${m}-01`)}%` }}>{(NOME_MES[m] || "Mai").slice(0, 3)}</span>
                   ))}
                 </div>
+                <span />
               </div>
-            );
-          })}
-        </div>
+              {subs.map(({ sg, ps, datas, pecas }) => (
+                <div key={sg} className="grid grid-cols-[7.5rem_1fr_7rem] gap-3 items-center py-2 border-t border-gray-50">
+                  <span className="text-[11px] font-extrabold uppercase truncate">{sg}</span>
+                  <div className="relative h-7">
+                    {mesesEixo.map((m) => <span key={m} className="absolute top-0 bottom-0 border-l border-gray-100" style={{ left: `${pos(`${ini.slice(0, 4)}-${m}-01`)}%` }} />)}
+                    <span className="absolute top-1/2 h-0.5 bg-gray-200 -translate-y-1/2" style={{ left: `${pos(datas[0])}%`, right: 0 }} />
+                    {datas.reduce<string[][]>((g, d) => {
+                      // Datas muito próximas (ex.: 30/07 e 01/08) viram um ponto só, com as duas datas.
+                      const ult = g[g.length - 1];
+                      if (ult && (new Date(d).getTime() - new Date(ult[0]).getTime()) / 86400000 < 12) ult.push(d); else g.push([d]);
+                      return g;
+                    }, []).map((g) => (
+                      <span key={g[0]} className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center" style={{ left: `${pos(g[0])}%` }}>
+                        <span className="w-2.5 h-2.5 rounded-full bg-black" />
+                        <span className="text-[9px] font-black mt-0.5 whitespace-nowrap">{g.map(diaMes).join(" e ")}</span>
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-500 text-right">{ps.length} novas · {n0(pecas)} pçs</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </Card>
     </div>
   );
@@ -438,12 +462,12 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
 /** Avisos da coleção (vindos da adidas / do comercial). */
 const AVISOS: [string, string][] = [
   ["Compra", "entregas de junho a novembro de 2027"],
-  ["Prazo de digitação", "15/11/2026"],
-  ["Cancelamento de carteira", "limite de 5% por coleção"],
+  ["Prazo para digitação no CLICK", "15/11/2026"],
+  ["Cancelamento de carteira", "novo limite de cancelamento de até 5% por coleção"],
   ["Grade", "ajustada por loja, pela venda de cada uma"],
-  ["Preços", "camisa de jogo volta para R$ 449,99 e cropped para R$ 399,99"],
-  ["Linha OG", "linha de viagem dos jogadores no 2º semestre"],
-  ["Verba", "respeitar a capacidade financeira da loja, não só o potencial de venda"],
+  ["Preços", "Manto Torcedor mantido em R$ 449,99 e Cropped em R$ 399,99"],
+  ["Linha OG", "será utilizada pelos jogadores como uniforme de viagem durante o FW27"],
+  ["Verba de compra", "respeitar a capacidade financeira e o limite de crédito de cada loja, considerando não apenas o potencial de venda, mas também a saúde financeira da operação"],
 ];
 
 // ======================== REPRESENTATIVIDADE ========================
@@ -1462,7 +1486,7 @@ const IndicadoresTab: React.FC<{ onIr: (s: SectionId) => void }> = ({ onIr }) =>
           </Card>
         ))}
       </div>
-      <p className="text-[10px] text-gray-400 px-2">Os indicadores não mudam a sugestão sozinhos: servem para você decidir se mexe na curva, na verba ou nas quantidades.</p>
+      <p className="text-[10px] text-gray-400 px-2">Os fatos relevantes não mudam a sugestão sozinhos: servem para você decidir se mexe na curva, na verba ou nas quantidades.</p>
     </div>
   );
 };
