@@ -1,8 +1,8 @@
 /**
  * Exportação no formato do carrinho do site da adidas (um arquivo por loja).
- * Mesmo layout do arquivo do site: abas Apparel e Hardware, cabeçalho nas linhas 1–5,
- * uma linha por artigo × data de entrega × tamanho, com a quantidade na coluna K (Qty).
- * Do carrinho do site vêm só nome, EAN, preço, aba e data de lançamento; as datas são as do app.
+ * Mesmo layout do arquivo do site (6 colunas): abas Apparel e Hardware, cabeçalho nas linhas 1–5,
+ * uma linha por artigo × data de entrega × tamanho, com a quantidade na coluna F (Qty).
+ * Do carrinho do site vêm a lista de artigos, a aba e os tamanhos; as datas são as do app.
  */
 import { zipSync, strToU8 } from "fflate";
 import { MODELO_CARRINHO } from "../data/fw27CarrinhoModelo";
@@ -24,37 +24,31 @@ export interface ResultadoExportacao {
 
 
 const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const COLS = "ABCDEFGHIJK";
 const txt = (ref: string, s: number, v: string | null | undefined) =>
   v == null || v === "" ? `<c r="${ref}" s="${s}"></c>` : `<c r="${ref}" s="${s}" t="inlineStr"><is><t>${esc(String(v))}</t></is></c>`;
 const num = (ref: string, s: number, v: number | null) => (v == null ? `<c r="${ref}" s="${s}"></c>` : `<c r="${ref}" s="${s}" t="n"><v>${v}</v></c>`);
-// Modelo de 11 colunas (com nome, EAN, lançamento e PDV), importado com sucesso no site em 22/10/2026.
-// "Size" em inglês: o site exporta "Tamanho", mas na importação só reconhece "Size".
-const CABECALHO = ["Sold To", "Article Number", "Article Name", "EAN", "Data de lançamento", "Requested Delivery Date", "Size", "PDV", "Total Qty", "Observações", "Qty"];
-const ESTILO_CAB = [1, 1, 2, 2, 2, 1, 1, 2, 2, 1, 2]; // mesmo do arquivo do site
-const ESTILO_DATA = [7, 8, 9]; // cor da coluna de data alterna como no site
+// Modelo de 6 colunas: o mesmo do carrinho exportado pelo site em 03/11/2026 (con_1206_…).
+const CABECALHO = ["Sold To", "Article Number", "Requested Delivery Date", "Tamanho", "Observações", "Qty"];
+const ESTILO_CAB = [1, 1, 1, 1, 1, 2];
 
-/** Linha do arquivo: [soldTo, artigo, nome, ean, lançamento, data, tamanho, pdv, qty]. */
-type LinhaCarrinho = [string, string, string, string | null, string, string, string, string, number | null];
+/** Linha do arquivo: [soldTo, artigo, data, tamanho, qty]. */
+type LinhaCarrinho = [string, string, string, string, number | null];
 
 /** Monta o XML de uma aba no mesmo formato do arquivo exportado pelo site (Apache POI). */
 function abaXml(cartNome: string, soldTo: string, linhas: LinhaCarrinho[], primeira: boolean): string {
-  const vazias = (r: number) => Array.from({ length: 9 }, (_, i) => `<c r="${COLS[i]}${r}" s="3"></c>`).join("");
+  const vazias = (r: number) => ["A", "B", "C", "D"].map((c) => `<c r="${c}${r}" s="3"></c>`).join("");
   const out: string[] = [primeira ? MODELO_CARRINHO.__sheetHead : MODELO_CARRINHO.__sheetHead.replace(' tabSelected="true"', "")];
-  out.push(`\n<row r="1">\n${vazias(1)}${txt("J1", 1, "Nome do carrinho")}${txt("K1", 3, cartNome)}</row>`);
+  out.push(`\n<row r="1">\n${vazias(1)}${txt("E1", 1, "Nome do carrinho")}${txt("F1", 3, cartNome)}</row>`);
   out.push(`\n<row r="2" hidden="1">\n</row>\n<row r="3" hidden="1">\n</row>`);
-  out.push(`\n<row r="4">\n${vazias(4)}${txt("J4", 1, "Número do Destinatário")}${txt("K4", 3, soldTo)}</row>`);
-  out.push(`\n<row r="5">\n${CABECALHO.map((h, i) => txt(COLS[i] + "5", ESTILO_CAB[i], h)).join("")}</row>`);
-  const datas: string[] = [];
-  linhas.forEach(([st, art, nome, ean, lanc, d, t, pdv, q], i) => {
+  out.push(`\n<row r="4">\n${vazias(4)}${txt("E4", 1, "Número do Destinatário")}${txt("F4", 3, soldTo)}</row>`);
+  out.push(`\n<row r="5">\n${CABECALHO.map((h, i) => txt("ABCDEF"[i] + "5", ESTILO_CAB[i], h)).join("")}</row>`);
+  linhas.forEach(([st, art, d, t, q], i) => {
     const r = i + 6;
-    if (!datas.includes(d)) datas.push(d);
-    const sData = ESTILO_DATA[datas.indexOf(d) % ESTILO_DATA.length];
-    out.push(`\n<row r="${r}">\n` + txt(`A${r}`, 3, st) + txt(`B${r}`, 3, art) + txt(`C${r}`, 3, nome) + txt(`D${r}`, 3, ean) + txt(`E${r}`, 3, lanc) +
-      txt(`F${r}`, sData, d) + txt(`G${r}`, 3, t) + txt(`H${r}`, 3, pdv) + `<c r="I${r}" s="3" t="n"><v>0.0</v></c><c r="J${r}" s="4"></c>` + num(`K${r}`, 5, q) + `</row>`);
+    out.push(`\n<row r="${r}">\n` + txt(`A${r}`, 3, st) + txt(`B${r}`, 3, art) + txt(`C${r}`, 7, d) + txt(`D${r}`, 3, t) +
+      `<c r="E${r}" s="4"></c>` + num(`F${r}`, 5, q) + `</row>`);
   });
   out.push("\n" + MODELO_CARRINHO.__sheetTail);
-  return out.join("").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:K${linhas.length + 5}"/>`);
+  return out.join("").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:F${linhas.length + 5}"/>`);
 }
 
 export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opcoes: { nomeCarrinho?: string; datas?: Record<string, string> } = {}): ResultadoExportacao {
@@ -66,15 +60,14 @@ export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opco
   const porAba: Record<string, LinhaCarrinho[]> = { Apparel: [], Hardware: [] };
   Object.entries(F.artigos).forEach(([art, a]) => {
     const x = porArtigo.get(art);
-    // Datas: as do calendário do app a partir do lançamento (só compramos de junho em diante).
-    // (e qualquer data que já tenha peça, para não sumir nada digitado antes de a regra mudar)
-    const datas = CALENDARIO.filter((d) => podeComprar({ lancamento: x?.produto.lancamento || a.lancamento }, d)
-      || Object.values(x?.gradeEntregas[d] || {}).some((q) => Number(q) > 0));
-    datas.forEach((d) => {
+    // Datas com peça (na ordem do calendário). Artigo sem peça sai uma vez, na 1ª data de compra, com Qty vazio — como no site.
+    const comPeca = CALENDARIO.filter((d) => Object.values(x?.gradeEntregas[d] || {}).some((q) => Number(q) > 0));
+    const primeira = CALENDARIO.find((d) => podeComprar({ lancamento: x?.produto.lancamento || a.lancamento }, d)) || CALENDARIO[0];
+    (comPeca.length ? comPeca : [primeira]).forEach((d) => {
       a.tamanhos.forEach((t) => {
         const q = Number(x?.gradeEntregas[d]?.[t] || 0);
         pecas += q;
-        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, a.nome, a.eans[t] ?? null, a.lancamento, opcoes.datas?.[d] || d, t, a.preco, q > 0 ? q : null]);
+        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, opcoes.datas?.[d] || d, t, q > 0 ? q : null]);
       });
     });
   });
