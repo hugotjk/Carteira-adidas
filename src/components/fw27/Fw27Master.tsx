@@ -314,7 +314,6 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
   const novos = PRODUTOS.length - co;
   const verba = verbaTotalDe(pedido);
   const nomes = pedido.lojas.map((l) => l.nome);
-  const vendido = pedido.lojas.reduce((a, l) => a + (lojaNaBase(l.nome)?.venda || 0), 0);
   const datasComPeca = Object.keys(somaPorData(linhas)).sort();
   const meses = somaPorMes(somaPorData(linhas));
   const maxMes = Math.max(1, ...meses.map((m) => m.q));
@@ -357,10 +356,9 @@ const ResumosTab: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; tot: Retur
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <Kpi label="Verba sugerida" value={brl(verba)} sub={pedido.lojas.length ? `${pedido.lojas.length} lojas · no pedido ${verba ? pct1((tot.valor / verba) * 100) : "—"}` : "sem lojas ainda"} />
         <Kpi label="Peças sugeridas" value={n0(tot.pecas)} />
-        <Kpi label="vs venda jun–out/26" value={vendido ? `${tot.valor >= vendido ? "+" : "−"}${pct1(Math.abs((tot.valor / vendido - 1) * 100))}` : "—"} sub={vendido ? `vendido ${brl(vendido)}` : "lojas sem venda"} />
         <Kpi label="Referências" value={PRODUTOS.length} sub={`${novos} novas · ${co} carry over`} />
         <Kpi label="Entregas" value={datasComPeca.length || "—"} sub={datasComPeca.length ? `${diaMes(dataReal(pedido, datasComPeca[0]))} a ${diaMes(dataReal(pedido, datasComPeca[datasComPeca.length - 1]))}` : "jun a nov"} />
       </div>
