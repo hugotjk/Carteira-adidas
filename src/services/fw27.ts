@@ -398,12 +398,15 @@ const somaGrade = (g: Record<string, number>) => Object.values(g).reduce((a, b) 
 
 /** Peças sugeridas (sem edição) de um produto numa loja. */
 /**
- * Custo do produto (tudo no app é a custo). Enquanto não temos a tabela de preço de compra,
- * custo = preço PDV × fator (custo ÷ PDV da camisa torcedor Home 2026 no DBSleek).
+ * Custo do produto (tudo no app é a custo) = PDV ÷ markup (Hugo, 03/11):
+ * camisa de jogo (Home, Away e Third) 2,07; os demais 2,28.
  */
-export const FATOR_CUSTO = Number((vendasPdv as any).fatorCusto) || 0.483;
+export const MKP_CAMISA_JOGO = 2.07;
+export const MKP_DEMAIS = 2.28;
+export const markupDe = (p: Fw27Produto) =>
+  ["HOME", "AWAY", "THIRD"].includes(p.subgrupo) && /^JERSEY/.test(p.tipo) ? MKP_CAMISA_JOGO : MKP_DEMAIS;
 export const custoEstimado = (p: Fw27Produto) => !(Number(p.custo) > 0);
-export const precoBase = (p: Fw27Produto) => (Number(p.custo) > 0 ? Number(p.custo) : Math.round(p.preco * FATOR_CUSTO * 100) / 100);
+export const precoBase = (p: Fw27Produto) => (Number(p.custo) > 0 ? Number(p.custo) : Math.round((p.preco / markupDe(p)) * 100) / 100);
 
 /**
  * Preço médio de uma peça do pedido: média dos preços pesada pelo % de peças de cada subgrupo
@@ -534,7 +537,7 @@ export function totais(pedido: Fw27Pedido, linhas: Fw27Linha[]): Fw27Totais {
       pecas: ls.reduce((a, x) => a + x.qtd, 0),
       valor: v,
       pctSugerido: ((pct[sg] || 0) / somaPct) * 100,
-      pctAtual: valor ? (v / valor) * 100 : 0,
+      pctAtual: pecas ? (ls.reduce((a, x) => a + x.qtd, 0) / pecas) * 100 : 0, // subgrupo: % das PEÇAS
     };
   });
   return { pecas, valor, verba, porLoja, porPack };

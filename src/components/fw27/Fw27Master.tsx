@@ -188,12 +188,6 @@ const VendaEst: React.FC<{ artigo: string; lojas: string[]; tamanho?: string; pe
   );
 };
 
-/** Diferença entre o % atual e o sugerido, com cor. */
-const Desvio: React.FC<{ atual: number; sugerido: number }> = ({ atual, sugerido }) => {
-  const d = atual - sugerido;
-  const cls = Math.abs(d) < 1 ? "text-emerald-600" : Math.abs(d) < 3 ? "text-amber-600" : "text-red-600";
-  return <span className={cn("font-extrabold", cls)}>{d >= 0 ? "+" : "−"}{pct1(Math.abs(d)).replace("%", "")} p.p.</span>;
-};
 
 const Card: React.FC<{ className?: string; children: React.ReactNode }> = ({ className, children }) => (
   <div className={cn("bg-white rounded-3xl border border-gray-100 shadow-sm p-4", className)}>{children}</div>
@@ -628,7 +622,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
                     className="w-24 shrink-0 bg-gray-50 rounded-md px-1.5 h-6 text-[10px] font-bold text-gray-600 outline-none focus:ring-2 focus:ring-black/10" />
                 </div>
                 <div className="text-[10px] font-semibold text-gray-400 mt-0.5">
-                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>sugerido {pct1(pctSugL[l.id] || 0)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)} {t && t.valor > 0 && <>· <Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></>}
+                  {l.gestor && <>{l.gestor} · </>}{lojaNaBase(l.nome) && <>sugerido {pct1(pctSugL[l.id] || 0)} · </>}No pedido: {pct1(t?.pctAtual || 0)} · {brl(t?.valor || 0)}
                 </div>
               </div>
               <NumInput ariaLabel={`% da loja ${l.nome}`} decimals={1} value={pctL[l.id] || 0} disabled={travado} onCommit={(v) => setPctLoja(l, v)} className="w-full" />
@@ -681,7 +675,7 @@ const ReprTab: React.FC<EditProps> = ({ pedido, atualizar, tot, travado }) => {
               </div>
               <NumInput ariaLabel={`% do subgrupo ${pk}`} decimals={1} value={pct[pk] || 0} disabled={travado} onCommit={(v) => setPack(pk, v)} className="w-full" />
               <div className="text-right text-[10px] font-bold text-gray-500">
-                {pct1(t?.pctAtual || 0)}{t && t.valor > 0 && <div><Desvio atual={t.pctAtual} sugerido={t.pctSugerido} /></div>}
+                {pct1(t?.pctAtual || 0)} <span className="text-gray-400">das peças</span>
               </div>
             </div>
           );
@@ -993,7 +987,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
               <div key={l.id} className="shrink-0 bg-gray-50 rounded-2xl px-3 py-2 min-w-[8.5rem]">
                 <div className="text-[10px] font-extrabold truncate">{l.nome}</div>
                 <div className="text-sm font-black">{pct1(t?.pctAtual || 0)} <span className="text-[10px] font-bold text-gray-400">/ {pct1(t?.pctSugerido || 0)}</span></div>
-                <div className="text-[10px] font-semibold text-gray-500">{n0(t?.pecas || 0)} pçs · <Desvio atual={t?.pctAtual || 0} sugerido={t?.pctSugerido || 0} /></div>
+                <div className="text-[10px] font-semibold text-gray-500">{n0(t?.pecas || 0)} pçs</div>
               </div>
             );
           })}
@@ -1473,13 +1467,13 @@ const INDICADORES: Indicador[] = [
   {
     tipo: "Produto", titulo: "Camisas com Betano em promoção", quando: "set–out/2026",
     aconteceu: "As versões com patrocínio entraram em promoção. A Third 2026 (lançada em julho) só existiu com Betano.",
-    medido: "Preço médio da Third c/ Betano: R$ 446 em ago → R$ 332 em out. Home e Away c/ Betano: ~R$ 445 → ~R$ 320. As versões sem patrocínio ficaram em ~R$ 443.", efeito: "alta",
+    medido: "Third com Betano: de R$ 449,99 para R$ 329,99 em outubro. Home e Away com Betano também entraram em promoção; as versões sem patrocínio continuaram a R$ 449,99.", efeito: "alta",
     ajustar: "Quantidade da torcedor III",
   },
   {
     tipo: "Produto", titulo: "Preço da Pro (antiga Authentic)", quando: "FW27",
-    aconteceu: "Pro FW27 a R$ 899,99. Authentic 2026 vendeu a preço médio de R$ 788.",
-    medido: "+14% no preço médio. Torcedor (R$ 449,99) e Fanshirt (R$ 229,99) iguais a 2026.", efeito: "baixa",
+    aconteceu: "Pro FW27 a R$ 899,99. A Authentic 2026 custava R$ 799,99.",
+    medido: "+12,5% no preço. Torcedor (R$ 449,99) e Fanshirt (R$ 229,99) iguais a 2026.", efeito: "baixa",
     ajustar: "Quantidade da Pro",
   },
 ];
