@@ -1462,9 +1462,15 @@ const INDICADORES: Indicador[] = [
     ajustar: "Curva (jun/jul)",
   },
   {
+    tipo: "Calendário", titulo: "Data FIFA: sem Brasileirão, a venda cai", quando: "21/09 a 06/10/2026",
+    aconteceu: "Super Data FIFA de 16 dias, com o Brasileirão parado. Em 2027 tem outra igual: 20/09 a 05/10 (e também 07 a 15/06).",
+    medido: "181 peças/dia: −32% vs as 2 semanas antes (266/dia) e −28% vs as 2 semanas depois (251/dia). Em R$: −39% e −26%.", efeito: "baixa",
+    ajustar: "Entregas de set/out",
+  },
+  {
     tipo: "Competição", titulo: "Eliminação na Libertadores (semifinal, Estudiantes)", quando: "22/10/2026",
     aconteceu: "Saída nos pênaltis no Maracanã, na semifinal.",
-    medido: "Outubro vs 2025: −26% (projeção do mês). Em 2025, com a final, novembro vendeu +56% sobre outubro.", efeito: "baixa",
+    medido: "Outubro vs 2025: −27% (mês fechado). Em 2025, com a final, novembro vendeu +56% sobre outubro.", efeito: "baixa",
     ajustar: "Curva (out/nov) e verba",
   },
   {
@@ -1499,9 +1505,9 @@ const INDICADORES: Indicador[] = [
   },
 ];
 
-const MESES_IND = [
+const MESES_IND: { m: string; a25: number; a26: number; parcial?: boolean }[] = [
   { m: "Jun", a25: 63898, a26: 52804 }, { m: "Jul", a25: 56039, a26: 36019 }, { m: "Ago", a25: 104186, a26: 71279 },
-  { m: "Set", a25: 47840, a26: 48117 }, { m: "Out", a25: 66194, a26: 36242, parcial: true }, { m: "Nov", a25: 103318, a26: 0 },
+  { m: "Set", a25: 47840, a26: 48118 }, { m: "Out", a25: 66194, a26: 48457 }, { m: "Nov", a25: 103318, a26: 0 },
 ];
 
 /** Fatos enviados pelos usuários: cada um propõe; master/admin aceita, recusa, edita e escolhe quem vê. */
@@ -1643,7 +1649,7 @@ const IndicadoresTab: React.FC<{ onIr: (s: SectionId) => void }> = ({ onIr }) =>
     <div className="space-y-4">
       <Card>
         <h3 className="text-sm font-extrabold">Venda por mês — 2025 × 2026</h3>
-        <p className="text-[10px] text-gray-400 mt-0.5">Peças ADIDAS FLA na rede. Outubro/2026 até 23/10.</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">Peças ADIDAS FLA na rede, até 31/10/2026.</p>
         <div className="flex items-end gap-3 h-40 mt-4">
           {MESES_IND.map((x) => {
             const dif = x.a26 && x.a25 ? ((x.parcial ? (x.a26 * 31) / 23 : x.a26) / x.a25 - 1) * 100 : null;

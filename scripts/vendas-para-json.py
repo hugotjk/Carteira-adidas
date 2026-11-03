@@ -90,7 +90,7 @@ subgrupos = {s: round(float(sg.get(s, 0)) / sgTot * 100, 2) for s in SUBS}
 
 # ---------- curva ----------
 pecas = v.groupby("MES").PECAS.sum()
-ultimoDia = 23  # vendas de out/2026 vão até 23/10
+ultimoDia = 31  # vendas de out/2026 completas (até 31/10)
 out26 = float(pecas["2026-10"]) * 31 / ultimoDia
 meses = {"06": float(pecas["2026-06"]), "07": float(pecas["2026-07"]), "08": float(pecas["2026-08"]),
          "09": float(pecas["2026-09"]), "10": out26,
