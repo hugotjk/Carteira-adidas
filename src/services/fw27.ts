@@ -170,7 +170,7 @@ const COMP = comparaveis as { fonte: string; subgrupos: Record<string, number>; 
 
 /** % padrão de cada subgrupo (em peças), definido pelo Hugo em 03/11/2026. Subgrupo que não estiver aqui usa os comparáveis. */
 const SUBGRUPOS_DEFINIDOS: Record<string, number> = {
-  HOME: 24, AWAY: 12, THIRD: 35, FANSHIRT: 14, TIROTECH: 5.5, POLIAMIDAS: 0, ICON: 3, ORIGINALS: 5, GRAPHIC: 0.5, BASQUETE: 1, BUCKET: 0,
+  THIRD: 28, HOME: 24, AWAY: 19, FANSHIRT: 14, ORIGINALS: 6, TIROTECH: 4.5, ICON: 3, BASQUETE: 1, GRAPHIC: 0.5, POLIAMIDAS: 0, BUCKET: 0,
 };
 
 /** % padrão de cada subgrupo: o definido; se faltar algum, pelos comparáveis / nº de referências. */
@@ -631,9 +631,9 @@ const diasNoMes = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).
 /** Curva padrão: vendas de 2026 (ano de Copa, parecido com 2027). Nov/2026 estimado. */
 /**
  * Curva padrão de compra por mês, em PEÇAS (Hugo, 03/11
- * jun 10 · jul 33 · ago 15 · set 17 · out 13 · nov 12 (% das peças da loja em cada mês).
+ * jun 10 · jul 30 · ago 15 · set 20 · out 13 · nov 12 (% das peças da loja em cada mês).
  */
-export const CURVA_SUGERIDA: Record<string, number> = { "06": 10, "07": 33, "08": 15, "09": 17, "10": 13, "11": 12 };
+export const CURVA_SUGERIDA: Record<string, number> = { "06": 10, "07": 30, "08": 15, "09": 20, "10": 13, "11": 12 };
 export const curvaPadrao = (): Record<string, number> => {
   const out: Record<string, number> = {};
   MESES_CURVA.forEach((m) => { out[m] = CURVA_SUGERIDA[m] ?? 0; });
@@ -645,8 +645,8 @@ export function curvaDe(pedido: Fw27Pedido): Record<string, number> {
   const salvo = pedido.curva || {};
   const out: Record<string, number> = {};
   if (!MESES_CURVA.some((m) => salvo[m] !== undefined)) return curvaPadrao();
-  // Pedido salvo com a curva padrão antiga (12/33/20/15/10/10) passa para a nova.
-  if (MESES_CURVA.map((m) => Number(salvo[m] || 0)).join(",") === "12,33,20,15,10,10") return curvaPadrao();
+  // Pedido salvo com uma curva padrão antiga passa para a atual.
+  if (["12,33,20,15,10,10", "10,33,15,17,13,12"].includes(MESES_CURVA.map((m) => Number(salvo[m] || 0)).join(","))) return curvaPadrao();
   MESES_CURVA.forEach((m) => { out[m] = Number(salvo[m] || 0); });
   return out;
 }
