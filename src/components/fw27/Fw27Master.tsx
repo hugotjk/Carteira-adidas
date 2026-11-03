@@ -1068,7 +1068,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
                                       {editado && <span className="text-[8px] font-black rounded px-1 py-0.5 bg-amber-50 text-amber-700">EDIT.</span>}
                                     </div>
                                     <div className="text-[10px] md:text-[11px] font-extrabold leading-tight line-clamp-2">{p.descricao}</div>
-                                    <div className="text-[9px] font-bold text-blue-700">PDV R$ {p.preco.toFixed(2).replace(".", ",")} <span className="text-gray-400">· custo R$ {precoBase(p).toFixed(2).replace(".", ",")}</span> {open ? "▲" : "▼"}</div>
+                                    <div className="text-[9px] font-bold text-blue-700">PDV R$ {p.preco.toFixed(2).replace(".", ",")} <span className="text-gray-400">· Custo aprox. R$ {precoBase(p).toFixed(2).replace(".", ",")}</span> {open ? "▲" : "▼"}</div>
                                   </div>
                                 </div>
                               </td>
@@ -1177,7 +1177,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
 
 function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
   const head = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "000000" } } };
-  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "GRUPO", "LINHA", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "CUSTO", "VALOR CUSTO"]];
+  const itens: any[][] = [["LOJA", "ARTIGO", "DESCRIÇÃO", "SUBGRUPO", "GRUPO", "LINHA", "ENTREGA", "TAMANHO", "QTD", "PREÇO PDV", "CUSTO APROX.", "VALOR CUSTO APROX."]];
   linhas.forEach((x) => {
     if (!x.qtd) return;
     const ge = gradePorEntrega(x.produto, x.grade, x.entregas);
@@ -1188,7 +1188,7 @@ function exportarExcel(pedido: Fw27Pedido, linhas: Fw27Linha[]) {
       });
     });
   });
-  const res: any[][] = [["LOJA", "VERBA (CUSTO)", "PEÇAS", "VALOR CUSTO", "% NO PEDIDO"]];
+  const res: any[][] = [["LOJA", "VERBA (CUSTO)", "PEÇAS", "VALOR CUSTO APROX.", "% NO PEDIDO"]];
   const tot = totais(pedido, linhas);
   pedido.lojas.forEach((l) => { const t = tot.porLoja[l.id]; res.push([l.nome, l.verba, t.pecas, t.valor, Math.round(t.pctAtual * 10) / 10]); });
   res.push(["TOTAL", tot.verba, tot.pecas, tot.valor, 100]);
