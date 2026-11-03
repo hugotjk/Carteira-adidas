@@ -1400,9 +1400,9 @@ const ResumoTab: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
         ))}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-        <Kpi label="Peças" value={n0(pecas)} />
-        <Kpi label="Valor a custo" value={brl(valor)} />
-        <Kpi label="Da verba" value={verba ? pct1((valor / verba) * 100) : "—"} sub={`verba ${brl(verba)}`} />
+        <Kpi label="Peças sugeridas" value={n0(pecas)} />
+        <Kpi label="Valor sugerido" value={brl(valor)} />
+        <Kpi label="Da verba sugerida" value={verba ? pct1((valor / verba) * 100) : "—"} sub={`verba ${brl(verba)}`} />
       </div>
       <Card>
         <h3 className="text-sm font-extrabold mb-3">Por entrega</h3>
