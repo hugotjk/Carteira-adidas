@@ -74,6 +74,14 @@ for _, r in lista.iterrows():
     })
 lojas.sort(key=lambda x: -x["pct"])
 
+# Lojas de DEMONSTRAÇÃO (apresentação aos franqueados): copiam os números de lojas medianas da rede,
+# sem mostrar de qual vieram. Mediana, um pouco menor e um pouco menor (por CMV jun–out/2026).
+DEMO = {"DEMO FLA 01": "NRN FRIBURGO GARRA", "DEMO FLA 02": "NRN RESENDE", "DEMO FLA 03": "NIG CAL FLA"}
+porNome = {l["nome"]: l for l in lojas}
+for i, (demo, origem) in enumerate(DEMO.items(), start=1):
+    o = porNome[origem]
+    lojas.append({"nome": demo, "gestor": "DEMONSTRACAO", "codAdidas": f"700000000{i}", "pct": o["pct"], "pct90": o["pct90"], "venda": o["venda"]})
+
 # ---------- subgrupos (referência) ----------
 SUBS = ["HOME", "AWAY", "THIRD", "FANSHIRT", "SPECIAL", "TIROTECH", "POLIAMIDAS", "ICON", "ORIGINALS", "GRAPHIC", "BASQUETE"]
 sg = v26.groupby("SUBGRUPO").VENDA.sum()
@@ -115,6 +123,8 @@ for pf, d in base.groupby("PERFIL"):
         K = 30
         mix = (q + K * geral / geral.sum())
         g[loja] = {t: int(round(x / mix.sum() * 1000)) for t, x in mix.items()}
+    for demo, origem in DEMO.items():
+        if origem in g: g[demo] = g[origem]
     grade[pf] = g
 
 # Custo ÷ preço PDV da camisa torcedor Home 2026 (R$ 449,99) antes das promoções (jun–ago/26):

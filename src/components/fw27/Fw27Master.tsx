@@ -9,6 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import { salvarArquivo } from "../../lib/salvarArquivo";
+import manualUrl from "../../assets/manual-sugestao-fw27.pdf?url";
 import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
 import { criarFato, revisarFato, listarFatos, Fw27Fato, Visibilidade, EfeitoFato } from "../../services/fw27Fatos";
 import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
@@ -239,6 +240,13 @@ const Fw27Master: React.FC = () => {
                 <span className={cn("text-[9px] font-black uppercase tracking-wider rounded-md px-1.5 py-0.5", travado ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500")}>
                   {travado ? "Enviado" : "Rascunho"}
                 </span>
+                <button
+                  onClick={async () => { try { const b = await (await fetch(manualUrl)).blob(); await salvarArquivo("Manual_Sugestao_FW27.pdf", b); } catch { window.open(manualUrl, "_blank"); } }}
+                  className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider rounded-md px-1.5 py-0.5 bg-black text-white hover:bg-gray-800"
+                  title="Baixar o manual da Sugestão FW27 (PDF)"
+                >
+                  <Download size={10} /> Manual
+                </button>
               </div>
             </div>
           </div>

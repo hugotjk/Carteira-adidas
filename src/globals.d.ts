@@ -7,3 +7,8 @@ declare module "*.webp" {
   const src: string;
   export default src;
 }
+
+declare module "*.pdf?url" {
+  const src: string;
+  export default src;
+}
