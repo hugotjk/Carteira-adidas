@@ -16,7 +16,7 @@ import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27R
 import {
   aplicarVerbas, verbaTotalDe, verbaSugerida, pctLojas, pctLojasSugerido,
   dividir, PRODUTOS, SUBGRUPOS, LANCAMENTOS, CALENDARIO, datasEntrega, podeComprar, inicioCompra, MESES_CURVA, curvaDe, gradePorEntrega, gradeProporcional, Fw27Pedido, Fw27Loja, Fw27Linha, Fw27Produto,
-  precoBase, dataReal, limitesData, vendaEstoqueDe, refsComparaveis, PERIODO_VENDA_ESTOQUE, PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
+  precoBase, dataReal, limitesData, vendaEstoqueDe, refsComparaveis, PERIODO_VENDA_ESTOQUE, PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoGradeDaLoja, gradeDoGrupo, Fw27GrupoGrade, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 
@@ -770,34 +770,62 @@ const BaseLojasCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atuali
  * % de cada tamanho por perfil (masculina, feminina, infantil…). Padrão = o que cada loja vendeu.
  * Mexer aqui muda a grade de todos os produtos daquele perfil que não tiveram a grade editada à mão.
  */
+const CORES_GRUPO = ["bg-sky-500", "bg-violet-500", "bg-emerald-500", "bg-amber-500", "bg-rose-500", "bg-teal-500"];
 const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"]; travado: boolean }> = ({ pedido, atualizar, travado }) => {
+  // Seleção: "TODAS", um grupo ("G:id") ou uma loja (id).
   const [loja, setLoja] = React.useState("TODAS");
   const perfis = PERFIS_GRADE.filter((x) => (TAMANHOS_PERFIL[x.id] || []).length);
-  const lojaSel = pedido.lojas.find((l) => l.id === loja);
+  const grupos = pedido.gradeGrupos || [];
+  const corDo = (gid: string) => CORES_GRUPO[Math.max(0, grupos.findIndex((g) => g.id === gid)) % CORES_GRUPO.length];
+  const grupoSel = loja.startsWith("G:") ? grupos.find((g) => "G:" + g.id === loja) : undefined;
+  const lojaSel = grupoSel ? undefined : pedido.lojas.find((l) => l.id === loja);
+  const grupoDaLojaSel = lojaSel ? grupoGradeDaLoja(pedido, lojaSel.id) : undefined;
   const unica = gradeUnicaLigada(pedido);
   const propria = !!lojaSel && !!pedido.gradePropria?.includes(lojaSel.id);
-  // O que dá para editar nesta visão: TODAS só com grade única; loja só se ela não segue a única.
-  const editavel = !travado && (lojaSel ? !segueGradeUnica(pedido, lojaSel.id) : unica);
-  const tabela = (perfil: string) => (lojaSel ? gradeDaLoja(perfil, { pedido, loja: lojaSel }) : gradeTodas(perfil, pedido));
-  const mexido = (perfil: string) => (lojaSel ? !!pedido.gradeLoja?.[lojaSel.id]?.[perfil] : !!pedido.grade?.[perfil]);
+  // O que dá para editar: grupo sempre; TODAS só com grade única; loja só se não está em grupo e não segue a única.
+  const editavel = !travado && (grupoSel ? true : lojaSel ? !grupoDaLojaSel && !segueGradeUnica(pedido, lojaSel.id) : unica);
+  const tabela = (perfil: string) => (grupoSel ? gradeDoGrupo(perfil, pedido, grupoSel) : lojaSel ? gradeDaLoja(perfil, { pedido, loja: lojaSel }) : gradeTodas(perfil, pedido));
+  const mexido = (perfil: string) => (grupoSel ? !!grupoSel.grade?.[perfil] : lojaSel ? !!pedido.gradeLoja?.[lojaSel.id]?.[perfil] : !!pedido.grade?.[perfil]);
+  const mudaGrupo = (gid: string, fn: (g: Fw27GrupoGrade) => Fw27GrupoGrade) =>
+    atualizar((p) => ({ ...p, gradeGrupos: (p.gradeGrupos || []).map((g) => (g.id === gid ? fn(g) : g)) }));
   const setTam = (perfil: string, t: string, v: number) => {
     const nova = { ...tabela(perfil), [t]: v };
+    if (grupoSel) return mudaGrupo(grupoSel.id, (g) => ({ ...g, grade: { ...(g.grade || {}), [perfil]: nova } }));
     atualizar((p) => (lojaSel
       ? { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: { ...(p.gradeLoja?.[lojaSel.id] || {}), [perfil]: nova } } }
       : { ...p, grade: { ...(p.grade || {}), [perfil]: nova } }));
   };
-  const padrao = (perfil: string) => atualizar((p) => {
-    if (lojaSel) { const { [perfil]: _x, ...r } = p.gradeLoja?.[lojaSel.id] || {}; return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: r } }; }
-    const { [perfil]: _g, ...grade } = p.grade || {};
-    return { ...p, grade };
-  });
+  const padrao = (perfil: string) => {
+    if (grupoSel) return mudaGrupo(grupoSel.id, (g) => { const { [perfil]: _x, ...r } = g.grade || {}; return { ...g, grade: r }; });
+    atualizar((p) => {
+      if (lojaSel) { const { [perfil]: _x, ...r } = p.gradeLoja?.[lojaSel.id] || {}; return { ...p, gradeLoja: { ...(p.gradeLoja || {}), [lojaSel.id]: r } }; }
+      const { [perfil]: _g, ...grade } = p.grade || {};
+      return { ...p, grade };
+    });
+  };
   const setUnica = (v: boolean) => atualizar((p) => ({ ...p, gradeUnica: v }));
   const setPropria = (v: boolean) => lojaSel && atualizar((p) => {
     const l = new Set(p.gradePropria || []);
     if (v) l.add(lojaSel.id); else l.delete(lojaSel.id);
     return { ...p, gradePropria: Array.from(l) };
   });
+  const novoGrupo = () => {
+    const id = novoId();
+    atualizar((p) => ({ ...p, gradeGrupos: [...(p.gradeGrupos || []), { id, nome: `Grupo ${(p.gradeGrupos || []).length + 1}`, lojas: [] }] }));
+    setLoja("G:" + id);
+  };
+  // Loja entra no grupo (e sai de outro, se estava) ou sai dele.
+  const alternarLoja = (gid: string, lojaId: string) => atualizar((p) => ({
+    ...p,
+    gradeGrupos: (p.gradeGrupos || []).map((g) => {
+      const tem = g.lojas.includes(lojaId);
+      if (g.id === gid) return { ...g, lojas: tem ? g.lojas.filter((x) => x !== lojaId) : [...g.lojas, lojaId] };
+      return tem ? { ...g, lojas: g.lojas.filter((x) => x !== lojaId) } : g;
+    }),
+  }));
+  const excluirGrupo = (gid: string) => { atualizar((p) => ({ ...p, gradeGrupos: (p.gradeGrupos || []).filter((g) => g.id !== gid) })); setLoja("TODAS"); };
   const nPropria = pedido.lojas.filter((l) => pedido.gradePropria?.includes(l.id)).length;
+  const Ponto: React.FC<{ gid: string }> = ({ gid }) => <span className={cn("inline-block w-2 h-2 rounded-full ml-1.5 align-middle", corDo(gid))} />;
   return (
     <Card className="px-4 py-2">
       <div className="py-2">
@@ -805,30 +833,84 @@ const GradeCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
         <p className="text-[10px] text-gray-400 mt-0.5">% de cada tamanho. Padrão = o que cada loja vendeu em 2025–2026. Mudar aqui muda a grade de todos os produtos do perfil (menos os que você editou à mão).</p>
       </div>
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2">
-        {[{ id: "TODAS", nome: "TODAS AS LOJAS" }, ...pedido.lojas].map((l) => {
-          const marca = l.id !== "TODAS" && unica && pedido.gradePropria?.includes(l.id);
+        <button onClick={() => setLoja("TODAS")} className={cn("shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border", loja === "TODAS" ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>TODAS AS LOJAS</button>
+        {grupos.map((g) => (
+          <button key={g.id} onClick={() => setLoja("G:" + g.id)} className={cn("shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border uppercase", loja === "G:" + g.id ? "bg-black text-white border-black" : "bg-gray-50 text-gray-700 border-gray-300")}>
+            <span className={cn("inline-block w-2 h-2 rounded-full mr-1.5 align-middle", corDo(g.id))} />{g.nome} <span className="opacity-60">· {g.lojas.filter((x) => pedido.lojas.some((l) => l.id === x)).length}</span>
+          </button>
+        ))}
+        {!travado && pedido.lojas.length > 1 && (
+          <button onClick={novoGrupo} className="shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border border-dashed border-gray-300 text-gray-500 hover:text-black hover:border-black flex items-center gap-1"><Plus size={12} /> Grupo de grade</button>
+        )}
+        <span className="shrink-0 w-px bg-gray-200 mx-1" />
+        {pedido.lojas.map((l) => {
+          const g = grupoGradeDaLoja(pedido, l.id);
+          const marca = !g && unica && pedido.gradePropria?.includes(l.id);
           return (
             <button key={l.id} onClick={() => setLoja(l.id)} className={cn("shrink-0 h-8 px-3 rounded-xl text-[10px] font-extrabold border", loja === l.id ? "bg-black text-white border-black" : "bg-white text-gray-600 border-gray-200")}>
-              {l.nome}{marca && <span className="ml-1 text-amber-500">●</span>}
+              {l.nome}{g && <Ponto gid={g.id} />}{marca && <span className="ml-1 text-amber-500">●</span>}
             </button>
           );
         })}
       </div>
-      {!travado && (
+
+      {grupoSel && (
+        <div className="rounded-xl bg-gray-50 px-3 py-2.5 mb-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", corDo(grupoSel.id))} />
+            <input
+              aria-label="Nome do grupo" disabled={travado} defaultValue={grupoSel.nome} key={grupoSel.id}
+              onBlur={(e) => { const v = e.target.value.trim() || grupoSel.nome; if (v !== grupoSel.nome) mudaGrupo(grupoSel.id, (g) => ({ ...g, nome: v })); }}
+              className="flex-1 min-w-0 bg-white rounded-lg px-2 h-8 text-xs font-extrabold uppercase outline-none focus:ring-2 focus:ring-black/10"
+            />
+            {!travado && (
+              <button onClick={() => excluirGrupo(grupoSel.id)} className="h-8 px-2.5 rounded-lg text-[10px] font-bold text-gray-500 hover:text-red-600 hover:bg-red-50 flex items-center gap-1"><Trash2 size={12} /> Excluir grupo</button>
+            )}
+          </div>
+          <div className="text-[10px] font-bold text-gray-500">Lojas deste grupo (clique para colocar ou tirar):</div>
+          <div className="flex flex-wrap gap-1.5">
+            {pedido.lojas.map((l) => {
+              const dentro = grupoSel.lojas.includes(l.id);
+              const outro = !dentro ? grupoGradeDaLoja(pedido, l.id) : undefined;
+              return (
+                <button key={l.id} disabled={travado} onClick={() => alternarLoja(grupoSel.id, l.id)}
+                  title={outro ? `Está no grupo ${outro.nome}: clicar move para este` : undefined}
+                  className={cn("h-7 px-2.5 rounded-lg text-[10px] font-extrabold border", dentro ? "bg-black text-white border-black" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400")}>
+                  {dentro ? "✓ " : ""}{l.nome}{outro && <Ponto gid={outro.id} />}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-gray-400">
+            Grade do grupo = vendas das lojas do grupo somadas (cada loja pesa pela sua verba). Mudar aqui vale para todas as lojas do grupo. Lojas fora de grupo usam a grade delas.
+          </p>
+        </div>
+      )}
+
+      {!travado && !grupoSel && (
         <label className="flex items-center gap-2 py-2 text-[11px] font-bold text-gray-700 cursor-pointer select-none">
           {lojaSel ? (
-            unica && <><input type="checkbox" checked={propria} onChange={(e) => setPropria(e.target.checked)} className="accent-black" /> Esta loja usa grade própria (vendas dela), fora da grade única</>
+            !grupoDaLojaSel && unica && <><input type="checkbox" checked={propria} onChange={(e) => setPropria(e.target.checked)} className="accent-black" /> Esta loja usa grade própria (vendas dela), fora da grade única</>
           ) : (
-            <><input type="checkbox" checked={unica} onChange={(e) => setUnica(e.target.checked)} className="accent-black" /> Mesma grade para todas as lojas{unica && nPropria > 0 && <span className="text-gray-400 font-semibold">(menos {nPropria} com grade própria ●)</span>}</>
+            <><input type="checkbox" checked={unica} onChange={(e) => setUnica(e.target.checked)} className="accent-black" /> Mesma grade para todas as lojas{unica && nPropria > 0 && <span className="text-gray-400 font-semibold">(menos {nPropria} com grade própria ●)</span>}{unica && grupos.some((g) => g.lojas.length) && <span className="text-gray-400 font-semibold">(lojas em grupo seguem a grade do grupo)</span>}</>
           )}
         </label>
       )}
       {!editavel && !travado && (
-        <p className="text-[10px] text-gray-500 bg-gray-50 rounded-lg px-2 py-1.5 mb-1">
-          {lojaSel ? "Esta loja segue a grade de TODAS AS LOJAS. Marque “grade própria” para mexer só nela." : "Média das lojas (cada uma usa a própria grade). Marque “mesma grade para todas” para editar uma grade só, ou clique numa loja."}
+        <p className="text-[10px] text-gray-500 bg-gray-50 rounded-lg px-2 py-1.5 mb-1 flex items-center justify-between gap-2">
+          <span>
+            {grupoDaLojaSel ? `Esta loja segue a grade do grupo ${grupoDaLojaSel.nome}.`
+              : lojaSel ? "Esta loja segue a grade de TODAS AS LOJAS. Marque “grade própria” para mexer só nela."
+              : "Média das lojas (cada uma usa a própria grade). Marque “mesma grade para todas”, crie um grupo de grade ou clique numa loja."}
+          </span>
+          {grupoDaLojaSel && lojaSel && (
+            <button onClick={() => alternarLoja(grupoDaLojaSel.id, lojaSel.id)} className="shrink-0 font-black text-black underline">Tirar do grupo</button>
+          )}
         </p>
       )}
-      {perfis.map(({ id, nome }) => {
+      {grupoSel && !grupoSel.lojas.length ? (
+        <p className="text-[11px] font-bold text-gray-400 py-4 text-center border-t border-gray-100">Escolha as lojas do grupo para ver a grade.</p>
+      ) : perfis.map(({ id, nome }) => {
         const tams = TAMANHOS_PERFIL[id] || [];
         const tab = tabela(id);
         const soma = tams.reduce((a, t) => a + (tab[t] || 0), 0);
