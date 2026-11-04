@@ -50,6 +50,14 @@ export interface Fw27Loja {
 
 export type Fw27Status = "rascunho" | "enviado";
 
+export interface Fw27GrupoGrade {
+  id: string;
+  nome: string;
+  lojas: string[];
+  /** % de cada tamanho por perfil, editado no grupo. Vazio = grade misturada das lojas do grupo. */
+  grade?: Record<string, Record<string, number>>;
+}
+
 export interface Fw27Pedido {
   lojas: Fw27Loja[];
   /** Verba total do pedido (R$ a preço PDV). Vazio = sugerida (vendido jun–out/2026 + 10%). */
@@ -72,6 +80,8 @@ export interface Fw27Pedido {
   grade?: Record<string, Record<string, number>>;
   /** % de cada tamanho por perfil só para uma loja: lojaId → perfil → tamanho → %. Manda sobre o de todas. */
   gradeLoja?: Record<string, Record<string, Record<string, number>>>;
+  /** Grupos de grade: lojas que usam uma grade só (a do grupo). Loja fora de grupo usa a própria (ou a única). */
+  gradeGrupos?: Fw27GrupoGrade[];
   /** As lojas do login já entraram sozinhas na 1ª vez (não entram de novo se forem apagadas). */
   lojasAuto?: boolean;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
@@ -83,7 +93,7 @@ export interface Fw27Pedido {
 
 const MAPA_SUBGRUPO = subgruposPorArtigo as Record<string, string>;
 /** Tamanhos que não compramos, por perfil de grade (Hugo, 03/11): masculino sem 2XS; boné/bucket sem OSFC e OSFY. */
-const TAM_FORA: Record<string, string[]> = { MASC: ["2XS"], CABECA: ["OSFC", "OSFY"] };
+const TAM_FORA: Record<string, string[]> = { MASC: ["2XS"], CABECA: ["OSFC", "OSFY"], MEIAO: ["KXL", "XXL", "2XL"] };
 export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).map((p) => {
   const base = { ...p, subgrupo: (MAPA_SUBGRUPO[p.artigo] || p.pack || "OUTROS").toUpperCase() } as Fw27Produto;
   const fora = TAM_FORA[perfilGrade(base)] || [];
@@ -346,9 +356,9 @@ export interface GradeCtx { pedido?: Fw27Pedido; loja?: Pick<Fw27Loja, "id" | "n
 export function gradePropriaDaLoja(perfil: string, ctx: GradeCtx = {}): Record<string, number> {
   return (ctx.loja && ctx.pedido?.gradeLoja?.[ctx.loja.id]?.[perfil]) || gradeVendida(perfil, ctx.loja?.nome);
 }
-/** Média das grades próprias das lojas do pedido, pesada pela verba. */
-export function gradeMedia(perfil: string, pedido?: Fw27Pedido): Record<string, number> {
-  const lojas = pedido?.lojas || [];
+/** Média das grades próprias das lojas do pedido (ou só das lojas indicadas), pesada pela verba de cada loja. */
+export function gradeMedia(perfil: string, pedido?: Fw27Pedido, soLojas?: string[]): Record<string, number> {
+  const lojas = (pedido?.lojas || []).filter((l) => !soLojas || soLojas.includes(l.id));
   if (!lojas.length) return gradeVendida(perfil);
   const tams = TAMANHOS_PERFIL[perfil] || [];
   const somaV = lojas.reduce((a, l) => a + (Number(l.verba) || 0), 0);
@@ -376,8 +386,23 @@ export function gradeTodas(perfil: string, pedido?: Fw27Pedido): Record<string, 
 /** A loja segue a grade única? */
 export const segueGradeUnica = (pedido: Fw27Pedido | undefined, lojaId?: string) => gradeUnicaLigada(pedido) && !(lojaId && pedido?.gradePropria?.includes(lojaId));
 
-/** % de cada tamanho em uso na loja: a grade única (se ligada e a loja segue) ou a própria. */
+/** Grupo de grade em que a loja está (se estiver). */
+export const grupoGradeDaLoja = (pedido: Fw27Pedido | undefined, lojaId?: string) =>
+  lojaId ? pedido?.gradeGrupos?.find((g) => g.lojas.includes(lojaId)) : undefined;
+/** Grade do grupo: a editada nele ou a misturada das lojas do grupo (cada loja pesa pela sua verba). */
+const cacheGrupo = new WeakMap<Fw27Pedido, Record<string, Record<string, number>>>();
+export function gradeDoGrupo(perfil: string, pedido: Fw27Pedido, grupo: Fw27GrupoGrade): Record<string, number> {
+  if (grupo.grade?.[perfil]) return grupo.grade[perfil];
+  let c = cacheGrupo.get(pedido);
+  if (!c) { c = {}; cacheGrupo.set(pedido, c); }
+  const k = grupo.id + "|" + perfil;
+  return (c[k] = c[k] || gradeMedia(perfil, pedido, grupo.lojas));
+}
+
+/** % de cada tamanho em uso na loja: a do grupo dela; senão a grade única (se ligada e a loja segue); senão a própria. */
 export function gradeDaLoja(perfil: string, ctx: GradeCtx = {}): Record<string, number> {
+  const grupo = grupoGradeDaLoja(ctx.pedido, ctx.loja?.id);
+  if (grupo && ctx.pedido) return gradeDoGrupo(perfil, ctx.pedido, grupo);
   if (segueGradeUnica(ctx.pedido, ctx.loja?.id)) return gradeTodas(perfil, ctx.pedido);
   return gradePropriaDaLoja(perfil, ctx);
 }
