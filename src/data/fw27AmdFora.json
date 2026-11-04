@@ -1,5 +1,5 @@
 {
- "_leia": "Artigos da AMD que NÃO entram no app. Para voltar um artigo, tire daqui e rode scripts/amd-para-json.mjs. Os do SPECIAL guardam os dados da AMD de 23/10 (subgrupo SPECIAL).",
+ "_leia": "Artigos da AMD que NÃO entram no app. Para voltar um artigo, tire daqui e rode scripts/amd-para-json.mjs. Os do SPECIAL guardam os dados da AMD de 23/10 (subgrupo SPECIAL). \"incluir\": artigos que entram mesmo fora das linhas FW27 da AMD. \"lancamento\": data de lançamento usada no app no lugar da AMD (definido pelo Hugo em 04/11/2026).",
  "fora": {
   "LY3626": {
    "motivo": "PROMO não entra no app"
@@ -83,5 +83,34 @@
     "carryOver": "TOTALLY NEW"
    }
   }
+ },
+ "incluir": {
+  "KG4978": {
+   "artigo": "KG4978",
+   "descricao": "CAMISA FLAMENGO II PRO 27",
+   "pack": "AWAY AUTHENTIC",
+   "tipo": "JERSEY (SHORT SLEEVE)",
+   "genero": "MALE",
+   "idade": "ADULT",
+   "tamanhos": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "2XL"
+   ],
+   "lancamento": "2027-06-01",
+   "fim": "2027-11-30",
+   "preco": 899.99,
+   "carryOver": "CARRY OVER"
+  }
+ },
+ "lancamento": {
+  "MA3762": "2027-06-01",
+  "MA3763": "2027-06-01",
+  "MA3764": "2027-06-01",
+  "MF9669": "2027-07-01",
+  "KY3172": "2027-06-01"
  }
 }

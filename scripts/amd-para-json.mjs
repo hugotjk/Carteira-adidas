@@ -36,5 +36,8 @@ const produtos = linhas
     preco: Number(col(r, "RRP")) || 0,
     carryOver: String(col(r, "CARRY OVER")).trim().toUpperCase(),
   }));
+// Ajustes manuais: artigos incluídos à mão e datas de lançamento definidas para o app.
+Object.values(fora.incluir || {}).forEach((p) => { if (!produtos.some((x) => x.artigo === p.artigo)) produtos.push(p); });
+produtos.forEach((p) => { if (fora.lancamento?.[p.artigo]) p.lancamento = fora.lancamento[p.artigo]; });
 fs.writeFileSync(new URL("../src/data/fw27Amd.json", import.meta.url), JSON.stringify(produtos, null, 1) + "\n");
 console.log(produtos.length + " produtos gravados em src/data/fw27Amd.json");
