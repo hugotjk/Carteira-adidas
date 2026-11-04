@@ -93,7 +93,7 @@ export interface Fw27Pedido {
 
 const MAPA_SUBGRUPO = subgruposPorArtigo as Record<string, string>;
 /** Tamanhos que não compramos, por perfil de grade (Hugo, 03/11): masculino sem 2XS; boné/bucket sem OSFC e OSFY. */
-const TAM_FORA: Record<string, string[]> = { MASC: ["2XS"], CABECA: ["OSFC", "OSFY"] };
+const TAM_FORA: Record<string, string[]> = { MASC: ["2XS"], CABECA: ["OSFC", "OSFY"], MEIAO: ["KXL", "XXL", "2XL"] };
 export const PRODUTOS: Fw27Produto[] = (amd as Omit<Fw27Produto, "subgrupo">[]).map((p) => {
   const base = { ...p, subgrupo: (MAPA_SUBGRUPO[p.artigo] || p.pack || "OUTROS").toUpperCase() } as Fw27Produto;
   const fora = TAM_FORA[perfilGrade(base)] || [];
