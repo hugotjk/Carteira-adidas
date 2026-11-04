@@ -30,7 +30,7 @@ TT=('2026-07','2026-10'); IC=('2025-08','2025-11'); POS=('2026-08','2026-10')
 M={
 'HOME':[('KG4974','Pro (masc)','Authentic I 2026',sh(['JM5652'])),('LH9131','Torcedor masc','Manto I 2026 + c/ Betano',sh(['JM5651','LH8017'])),
  ('KG4983','Torcedor fem','Manto I fem 2026',sh(['JZ8871'])),('KG4984','Torcedor inf','Manto I inf 2026',sh(['JZ8872']))],
-'AWAY':[('LH9134','Torcedor masc','Manto II 2026 + c/ Betano',sh(['JM5653','LH8018'])),('KG4990','Torcedor fem','Manto II fem 2026',sh(['JZ8882'])),('KG4992','Torcedor inf','Manto II inf 2026',sh(['JZ8883']))],
+'AWAY':[('KG4978','Pro (masc)','Authentic II 2026',sh(['JM5654'])),('LH9134','Torcedor masc','Manto II 2026 + c/ Betano',sh(['JM5653','LH8018'])),('KG4990','Torcedor fem','Manto II fem 2026',sh(['JZ8882'])),('KG4992','Torcedor inf','Manto II inf 2026',sh(['JZ8883']))],
 'THIRD':[('LY3629','Pro (masc)','Authentic III 2026',sh(['JZ3143'])),('LY3627','Torcedor masc','Manto III 2026 c/ Betano',sh(['JZ3141'])),('LK9161','Feminina V','Manto III fem 2026',sh(['JZ3144'])),
  ('KG0063','Cropped','Cropped III 2026',sh(['JZ3148'])),('KG0064','Infantil','Manto III inf 2026',sh(['JZ3145'])),('LY3628','Short torcedor','Shorts III 2026',sh(['JZ3142'])),
  ('LY3673','Meião','Torcedor III × meião/home 2026',TORC_TOT['THIRD']*RAZ_MEIAO),('KS4902','Meião Pro','Torcedor III × meião/home 2026',TORC_TOT['THIRD']*RAZ_MEIAO),('KS7469','Mini kit','Torcedor III × mini kit/home 2026',TORC_TOT['THIRD']*RAZ_MINI)],
