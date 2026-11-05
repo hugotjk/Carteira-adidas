@@ -55,13 +55,16 @@ export function useAcompanhamento(ligado: boolean) {
   const [pedidos, setPedidos] = React.useState<PedidoDeLogin[] | null | undefined>(undefined);
   const [versao, setVersao] = React.useState(0);
   const tudo = userProfile?.role === "master" || userProfile?.accessType === "ALL" || user?.email === "hugotjk2@gmail.com";
+  // Só recarrega quando muda o login/acesso (texto), não a cada desenho da tela.
+  const tipo = userProfile?.accessType;
+  const valoresTxt = ((userProfile?.accessValues as string[]) || []).join("|");
   React.useEffect(() => {
     if (!ligado) return;
     let vivo = true;
-    listarRegistros({ uid: user?.uid, tudo, tipo: userProfile?.accessType, valores: userProfile?.accessValues }).then((r) => vivo && setRegs(r));
+    listarRegistros({ uid: user?.uid, tudo, tipo, valores: valoresTxt ? valoresTxt.split("|") : [] }).then((r) => vivo && setRegs(r));
     listarPedidosTodos().then((p) => vivo && setPedidos(p));
     return () => { vivo = false; };
-  }, [ligado, versao, user?.uid, userProfile, tudo]);
+  }, [ligado, versao, user?.uid, tipo, valoresTxt, tudo]);
   const visto = lerVisto(user?.uid);
   const novos = (regs || []).filter((r) => r.quando > visto && r.porUid !== user?.uid).length;
   return { regs, pedidos, novos, recarregar: () => setVersao((v) => v + 1), tudo };
