@@ -84,6 +84,8 @@ export interface Fw27Pedido {
   gradeGrupos?: Fw27GrupoGrade[];
   /** As lojas do login já entraram sozinhas na 1ª vez (não entram de novo se forem apagadas). */
   lojasAuto?: boolean;
+  /** E-mail do login dono do pedido (para o master saber de quem é no Acompanhamento). */
+  porEmail?: string;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
   curva?: Record<string, number>;
   status: Fw27Status;
