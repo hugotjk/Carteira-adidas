@@ -2,7 +2,7 @@ import React from "react";
 import * as XLSX from "xlsx-js-style";
 import {
   Sparkles, LayoutList, Store, Lightbulb, ClipboardList, Plus, Trash2, ChevronDown, ChevronUp,
-  Download, Lock, Unlock, RotateCcw, X, Cloud, CloudOff, Loader2, Search, EyeOff, Activity, TrendingDown, TrendingUp, Minus,
+  Download, Lock, Unlock, RotateCcw, X, Cloud, CloudOff, Loader2, Search, Eye, EyeOff, Activity, TrendingDown, TrendingUp, Minus,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../context/AuthContext";
@@ -19,6 +19,7 @@ import {
   precoBase, dataReal, limitesData, vendaEstoqueDe, refsComparaveis, PERIODO_VENDA_ESTOQUE, PERFIS_GRADE, TAMANHOS_PERFIL, gradeDaLoja, gradeTodas, gradeUnicaLigada, segueGradeUnica, grupoGradeDaLoja, gradeDoGrupo, Fw27GrupoGrade, grupoDe, linhaDe, calcular, totais, pctSubgrupos, subgruposPadrao, chaveItem, gradeDe, mesDe, diaMes, VENDAS, lojaNaBase, nomeBase,
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
+import Fw27Acompanhamento, { useAcompanhamento } from "./Fw27Acompanhamento";
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
@@ -26,6 +27,7 @@ const SECTIONS = [
   { id: "representatividade", label: "Representatividade por Loja", icon: Store },
   { id: "sugestao", label: "Sugestão", icon: Lightbulb },
   { id: "resumo", label: "Resumo", icon: ClipboardList },
+  { id: "acompanhamento", label: "Acompanhamento", icon: Eye },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
@@ -213,9 +215,13 @@ const SaveBadge: React.FC<{ estado: SaveState; salvoEm: string | null; erro: str
 // =====================================================================
 
 const Fw27Master: React.FC = () => {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
   const { imageMap } = useData();
-  const { pedido: pedidoSalvo, atualizar, estado, erro, salvoEm } = useFw27Pedido(user?.uid);
+  const { pedido: pedidoSalvo, atualizar, estado, erro, salvoEm } = useFw27Pedido(user?.uid, user?.email || undefined);
+  // Acompanhamento dos franqueados: só master e admin.
+  const podeAcompanhar = userProfile?.role === "master" || userProfile?.role === "admin" || user?.email === "hugotjk2@gmail.com";
+  const acomp = useAcompanhamento(podeAcompanhar);
+  const secoes = SECTIONS.filter((s) => s.id !== "acompanhamento" || podeAcompanhar);
   // Verba de cada loja = verba total × % da loja (sugeridos quando não digitados).
   const pedido = React.useMemo(() => aplicarVerbas(pedidoSalvo), [pedidoSalvo]);
   const [active, setActive] = React.useState<SectionId>("resumos");
@@ -264,8 +270,8 @@ const Fw27Master: React.FC = () => {
       </div>
 
       <div className="p-4 md:p-6 space-y-4 w-full mx-auto max-w-[112rem]">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          {SECTIONS.map((s) => (
+        <div className={cn("grid grid-cols-2 gap-2", secoes.length > 5 ? "md:grid-cols-6" : "md:grid-cols-5")}>
+          {secoes.map((s) => (
             <button
               key={s.id} onClick={() => setActive(s.id)}
               className={cn(
@@ -275,6 +281,9 @@ const Fw27Master: React.FC = () => {
             >
               <s.icon size={16} className="shrink-0" />
               <span className="text-[11px] font-bold leading-tight">{s.label}</span>
+              {s.id === "acompanhamento" && acomp.novos > 0 && (
+                <span className="ml-auto shrink-0 text-[9px] font-black bg-blue-600 text-white rounded-full px-1.5 py-0.5">{acomp.novos} {acomp.novos === 1 ? "novo" : "novos"}</span>
+              )}
             </button>
           ))}
         </div>
@@ -289,6 +298,7 @@ const Fw27Master: React.FC = () => {
               ? <SemLojas onIr={() => setActive("representatividade")} />
               : <SugestaoTab pedido={pedido} atualizar={atualizar} linhas={linhas} tot={tot} travado={travado} imageMap={imageMap} />)}
             {active === "indicadores" && <IndicadoresTab onIr={setActive} />}
+            {active === "acompanhamento" && podeAcompanhar && <Fw27Acompanhamento dados={acomp} />}
             {active === "resumo" && (semLojas
               ? <SemLojas onIr={() => setActive("representatividade")} />
               : <ResumoTab pedido={pedido} atualizar={atualizar} linhas={linhas} tot={tot} />)}

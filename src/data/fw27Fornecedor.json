@@ -827,7 +827,7 @@
   "LY3673": {
    "nome": "CRF 3 SO BLACK/BLACK",
    "aba": "Hardware",
-   "lancamento": "2027-06-01",
+   "lancamento": "2027-07-30",
    "preco": "159.99",
    "tamanhos": [
     "XS",
@@ -845,6 +845,101 @@
     "XL": "4071123262107",
     "XXL": "4071123262114"
    }
+  },
+  "LH9134": {
+   "nome": "CAMISA FLAMENGO II TORCEDOR",
+   "aba": "Apparel",
+   "lancamento": "2027-04-09",
+   "preco": "449.99",
+   "tamanhos": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "2XL",
+    "3XL"
+   ],
+   "eans": {}
+  },
+  "LL0651": {
+   "nome": "FLAMENGO ARQUIBANCADA II",
+   "aba": "Apparel",
+   "lancamento": "2027-06-01",
+   "preco": "229.99",
+   "tamanhos": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "2XL",
+    "3XL"
+   ],
+   "eans": {}
+  },
+  "LY7247": {
+   "nome": "REGATA BB FLAMENGO I",
+   "aba": "Apparel",
+   "lancamento": "2027-09-01",
+   "preco": "499.99",
+   "tamanhos": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "2XL",
+    "3XL",
+    "4XL"
+   ],
+   "eans": {}
+  },
+  "LZ6527": {
+   "nome": "REGATA BB FLAMENGO II",
+   "aba": "Apparel",
+   "lancamento": "2027-09-01",
+   "preco": "499.99",
+   "tamanhos": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL",
+    "2XL",
+    "3XL",
+    "4XL"
+   ],
+   "eans": {}
+  },
+  "LL0650": {
+   "nome": "FLAMENGO ARQUIBANCADA II INFANTIL",
+   "aba": "Apparel",
+   "lancamento": "2027-06-01",
+   "preco": "199.99",
+   "tamanhos": [
+    "7-8A",
+    "910A",
+    "1112",
+    "1314",
+    "1516"
+   ],
+   "eans": {}
+  },
+  "KS4902": {
+   "nome": "MEIAO FLAMENGO 3 PRO",
+   "aba": "Hardware",
+   "lancamento": "2027-08-01",
+   "preco": "179.99",
+   "tamanhos": [
+    "KXL",
+    "XS",
+    "SM",
+    "MD",
+    "LG",
+    "XL"
+   ],
+   "eans": {}
   }
  }
 }

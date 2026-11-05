@@ -41,6 +41,7 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
     ...(d.gradeLoja && typeof d.gradeLoja === "object" && { gradeLoja: d.gradeLoja }),
     ...(Array.isArray(d.gradeGrupos) && { gradeGrupos: d.gradeGrupos.filter((g) => g && Array.isArray(g.lojas)) }),
     ...(d.lojasAuto && { lojasAuto: true }),
+    ...(d.porEmail && { porEmail: d.porEmail }),
     status: d.status === "enviado" ? "enviado" : "rascunho",
     atualizadoEm: d.atualizadoEm,
     enviadoEm: d.enviadoEm,
@@ -49,7 +50,7 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
 
 const maisNovo = (a?: string, b?: string) => (a || "") >= (b || "");
 
-export function useFw27Pedido(uid: string | undefined) {
+export function useFw27Pedido(uid: string | undefined, email?: string) {
   const [pedido, setPedidoState] = React.useState<Fw27Pedido>(pedidoVazio());
   const [estado, setEstado] = React.useState<SaveState>("carregando");
   const [erro, setErro] = React.useState<string | null>(null);
@@ -99,14 +100,14 @@ export function useFw27Pedido(uid: string | undefined) {
   /** Altera o pedido e agenda o salvamento. */
   const atualizar = React.useCallback((fn: (p: Fw27Pedido) => Fw27Pedido) => {
     setPedidoState((atual) => {
-      const novo = { ...fn(atual), atualizadoEm: new Date().toISOString() };
+      const novo = { ...fn(atual), atualizadoEm: new Date().toISOString(), ...(email && { porEmail: email }) };
       ultimo.current = novo;
       setEstado("pendente");
       if (timer.current) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => { timer.current = null; if (ultimo.current) gravar(ultimo.current); }, ESPERA_MS);
       return novo;
     });
-  }, [gravar]);
+  }, [gravar, email]);
 
   // Ao sair da tela com alteração pendente, salva na hora.
   React.useEffect(() => () => {

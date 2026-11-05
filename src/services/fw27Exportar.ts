@@ -57,24 +57,24 @@ function abaXml(cartNome: string, soldTo: string, linhas: LinhaCarrinho[], prime
   return out.join("").replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:K${linhas.length + 5}"/>`);
 }
 
-export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opcoes: { nomeCarrinho?: string; datas?: Record<string, string> } = {}): ResultadoExportacao {
-  const soldTo = String(loja.codAdidas || "").trim();
-  const daLoja = linhas.filter((x) => x.loja.id === loja.id);
-  const porArtigo = new Map(daLoja.map((x) => [x.produto.artigo, x]));
+/** Quantidade de um artigo × data do calendário × tamanho. */
+type Qtd = (artigo: string, data: string, tamanho: string) => number;
+
+/**
+ * Monta o arquivo do carrinho. Datas: as do calendário do app a partir do lançamento (só compramos de junho em diante)
+ * e qualquer data que já tenha peça (para não sumir nada digitado antes de a regra mudar).
+ */
+function montarCarrinho(soldTo: string, cartNome: string, qtd: Qtd, lancamentoDe: (artigo: string) => string | undefined, datasTrocadas?: Record<string, string>): { blob: Blob; pecas: number } {
   let pecas = 0;
-  const cartNome = opcoes.nomeCarrinho || `FW27 ${loja.nome}`;
   const porAba: Record<string, LinhaCarrinho[]> = { Apparel: [], Hardware: [] };
   Object.entries(F.artigos).forEach(([art, a]) => {
-    const x = porArtigo.get(art);
-    // Datas: as do calendário do app a partir do lançamento (só compramos de junho em diante).
-    // (e qualquer data que já tenha peça, para não sumir nada digitado antes de a regra mudar)
-    const datas = CALENDARIO.filter((d) => podeComprar({ lancamento: x?.produto.lancamento || a.lancamento }, d)
-      || Object.values(x?.gradeEntregas[d] || {}).some((q) => Number(q) > 0));
+    const datas = CALENDARIO.filter((d) => podeComprar({ lancamento: lancamentoDe(art) || a.lancamento }, d)
+      || a.tamanhos.some((t) => qtd(art, d, t) > 0));
     datas.forEach((d) => {
       a.tamanhos.forEach((t) => {
-        const q = Number(x?.gradeEntregas[d]?.[t] || 0);
+        const q = qtd(art, d, t);
         pecas += q;
-        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, a.nome, a.eans[t] ?? null, a.lancamento, opcoes.datas?.[d] || d, t, a.preco, q > 0 ? q : null]);
+        (porAba[a.aba] = porAba[a.aba] || []).push([soldTo, art, a.nome, a.eans[t] ?? null, a.lancamento, datasTrocadas?.[d] || d, t, a.preco, q > 0 ? q : null]);
       });
     });
   });
@@ -91,10 +91,44 @@ export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opco
     "xl/worksheets/sheet1.xml": enc(abaXml(cartNome, soldTo, porAba.Apparel || [], true)),
     "xl/worksheets/sheet2.xml": enc(abaXml(cartNome, soldTo, porAba.Hardware || [], false)),
   });
+  return { blob: new Blob([zip], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), pecas };
+}
+
+export const nomeArquivoLoja = (lojaNome: string, soldTo: string) => `FW27_${lojaNome.replace(/[^A-Za-z0-9]+/g, "_")}_${soldTo || "SEM_CODIGO"}.xlsx`;
+
+export function exportarLojaFornecedor(loja: Fw27Loja, linhas: Fw27Linha[], opcoes: { nomeCarrinho?: string; datas?: Record<string, string> } = {}): ResultadoExportacao {
+  const soldTo = String(loja.codAdidas || "").trim();
+  const daLoja = linhas.filter((x) => x.loja.id === loja.id);
+  const porArtigo = new Map(daLoja.map((x) => [x.produto.artigo, x]));
+  const { blob, pecas } = montarCarrinho(soldTo, opcoes.nomeCarrinho || `FW27 ${loja.nome}`,
+    (art, d, t) => Number(porArtigo.get(art)?.gradeEntregas[d]?.[t] || 0),
+    (art) => porArtigo.get(art)?.produto.lancamento, opcoes.datas);
   const foraDoCarrinho = daLoja
     .filter((x) => x.qtd > 0 && !ARTIGOS_NO_CARRINHO.has(x.produto.artigo))
     .map((x) => ({ artigo: x.produto.artigo, pecas: x.qtd }));
-  const blob = new Blob([zip], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const nomeArquivo = `FW27_${loja.nome.replace(/[^A-Za-z0-9]+/g, "_")}_${soldTo || "SEM_CODIGO"}.xlsx`;
-  return { nomeArquivo, blob, pecas, foraDoCarrinho };
+  return { nomeArquivo: nomeArquivoLoja(loja.nome, soldTo), blob, pecas, foraDoCarrinho };
+}
+
+/**
+ * Refaz o arquivo do site a partir do que ficou guardado no histórico (o mesmo que o franqueado baixou).
+ * itens: [artigo, data de entrega (já trocada), tamanho, peças].
+ */
+export function arquivoClickDeItens(lojaNome: string, soldTo: string, itens: [string, string, string, number][], datasTrocadas?: Record<string, string>, lancamentoDe: (artigo: string) => string | undefined = () => undefined): ResultadoExportacao {
+  const q = new Map<string, number>();
+  itens.forEach(([a, d, t, n]) => q.set(`${a}|${d}|${t}`, (q.get(`${a}|${d}|${t}`) || 0) + n));
+  const { blob, pecas } = montarCarrinho(soldTo, `FW27 ${lojaNome}`, (a, d, t) => q.get(`${a}|${datasTrocadas?.[d] || d}|${t}`) || 0, lancamentoDe, datasTrocadas);
+  const fora = new Map<string, number>();
+  itens.forEach(([a, , , n]) => { if (!ARTIGOS_NO_CARRINHO.has(a)) fora.set(a, (fora.get(a) || 0) + n); });
+  return { nomeArquivo: nomeArquivoLoja(lojaNome, soldTo), blob, pecas, foraDoCarrinho: Array.from(fora, ([artigo, pecas]) => ({ artigo, pecas })) };
+}
+
+/** Junta vários arquivos num .zip (baixar todas as lojas de uma vez). */
+export async function zipArquivos(arquivos: { nome: string; blob: Blob }[]): Promise<Blob> {
+  const conteudo: Record<string, Uint8Array> = {};
+  for (const a of arquivos) {
+    let nome = a.nome, i = 2;
+    while (conteudo[nome]) nome = a.nome.replace(/(\.[^.]+)$/, `_${i++}$1`);
+    conteudo[nome] = new Uint8Array(await a.blob.arrayBuffer());
+  }
+  return new Blob([zipSync(conteudo)], { type: "application/zip" });
 }

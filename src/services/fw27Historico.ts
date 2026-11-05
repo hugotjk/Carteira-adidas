@@ -27,6 +27,8 @@ export interface Fw27Registro {
   pecas: number;
   valor: number;
   itens: ItemRegistro[];
+  /** Datas trocadas no pedido naquele momento (data do calendário → escolhida), para refazer o arquivo do site igual. */
+  datas?: Record<string, string>;
 }
 
 const COLECAO = "fw27Historico";
@@ -56,6 +58,7 @@ export function montarRegistro(tipo: TipoRegistro, por: string, pedido: Fw27Pedi
     pecas: itens.reduce((a, i) => a + i[6], 0),
     valor: itens.reduce((a, i) => a + i[6] * i[7], 0),
     itens,
+    ...(pedido.datas && Object.keys(pedido.datas).length ? { datas: pedido.datas } : {}),
   };
 }
 
@@ -110,4 +113,15 @@ export function excelDoRegistro(r: Fw27Registro): Blob {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "PEDIDO");
   return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })]);
+}
+
+/** Pedido em andamento de um login (coleção fw27Pedidos, um documento por login). Só master lê todos (regra do Firebase). */
+export interface PedidoDeLogin { uid: string; pedido: Fw27Pedido }
+export async function listarPedidosTodos(): Promise<PedidoDeLogin[] | null> {
+  try {
+    const snap = await getDocs(collection(db, "fw27Pedidos"));
+    return snap.docs.map((d: any) => ({ uid: d.id, pedido: d.data() as Fw27Pedido }));
+  } catch {
+    return null; // sem permissão (admin, enquanto a regra não for publicada)
+  }
 }
