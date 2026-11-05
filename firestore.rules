@@ -72,8 +72,10 @@ service cloud.firestore {
     }
 
     // Sugestão FW27: um pedido por login (liberada para todos em 30/10/2026). Cada um lê e grava o seu; o master todos.
+    // Admin também lê (aba Acompanhamento; a tela mostra só as lojas do acesso dele).
     match /fw27Pedidos/{userId} {
-      allow read, write: if isMaster() || (isAuthenticated() && request.auth.uid == userId);
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow write: if isMaster() || (isAuthenticated() && request.auth.uid == userId);
     }
 
     // Histórico FW27: cópia de cada exportação/fechamento. Cada login grava e lê os seus; master e admins leem todos.
