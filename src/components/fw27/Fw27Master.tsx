@@ -20,6 +20,7 @@ import {
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 import Fw27Acompanhamento, { useAcompanhamento } from "./Fw27Acompanhamento";
+import { lerReset, precisaReset, aplicarReset, Fw27Reset } from "../../services/fw27Reset";
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
@@ -239,6 +240,26 @@ const Fw27Master: React.FC = () => {
     }));
   }, [estado, tudo, travado, pedidoSalvo.lojasAuto, pedidoSalvo.lojas.length, visiveis, atualizar]);
 
+  // Atualização geral do master: lê ao abrir e ao voltar para a aba do navegador. Se o pedido ainda não recebeu,
+  // guarda uma cópia no Histórico e volta ao padrão novo (lojas, verba e grades ficam).
+  const [reset, setReset] = React.useState<Fw27Reset | null>(null);
+  React.useEffect(() => {
+    lerReset().then(setReset);
+    const aoVoltar = () => { if (document.visibilityState === "visible") lerReset().then(setReset); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, []);
+  const aplicando = React.useRef("");
+  React.useEffect(() => {
+    if (estado === "carregando" || !reset || !precisaReset(pedidoSalvo, reset) || aplicando.current === reset.em) return;
+    aplicando.current = reset.em;
+    (async () => {
+      const antes = aplicarVerbas(pedidoSalvo);
+      if (antes.lojas.length) await salvarRegistro(montarRegistro("antes da atualização", user?.email || "", antes, calcular(antes), undefined, user?.uid));
+      atualizar((p) => aplicarReset(p, reset));
+    })();
+  }, [estado, reset, pedidoSalvo, atualizar, user?.email, user?.uid]);
+
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 overflow-x-hidden pb-12">
@@ -270,6 +291,17 @@ const Fw27Master: React.FC = () => {
       </div>
 
       <div className="p-4 md:p-6 space-y-4 w-full mx-auto max-w-[112rem]">
+        {pedidoSalvo.resetEm && pedidoSalvo.resetVisto === false && (
+          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-3">
+            <RotateCcw size={18} className="text-amber-700 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 text-xs text-amber-900">
+              <div className="font-extrabold">Seu pedido foi atualizado em {new Date(pedidoSalvo.resetEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+              {reset?.mensagem && reset.em === pedidoSalvo.resetEm && <div className="mt-1 whitespace-pre-line">{reset.mensagem}</div>}
+              <div className="mt-1 text-[11px] text-amber-800">A curva dos meses, o % dos subgrupos e as quantidades voltaram para a sugestão nova. Suas lojas, a verba e as grades por tamanho continuam como estavam. A versão anterior ficou guardada no Histórico (aba Resumo).</div>
+            </div>
+            <button onClick={() => atualizar((p) => ({ ...p, resetVisto: true }))} className="h-8 px-3 rounded-lg bg-black text-white text-[10px] font-black shrink-0">Entendi</button>
+          </div>
+        )}
         <div className={cn("grid grid-cols-2 gap-2", secoes.length > 5 ? "md:grid-cols-6" : "md:grid-cols-5")}>
           {secoes.map((s) => (
             <button
@@ -1390,12 +1422,12 @@ const HistoricoCard: React.FC<{ versao: number }> = ({ versao }) => {
         <div key={r.id} className="flex items-center gap-2 py-2 border-t border-gray-50">
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-extrabold truncate">
-              <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5 mr-1.5", r.tipo === "fechamento" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700")}>{r.tipo === "fechamento" ? "FECHADO" : "BAIXADO"}</span>
+              <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5 mr-1.5", r.tipo === "fechamento" ? "bg-emerald-50 text-emerald-700" : r.tipo === "antes da atualização" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700")}>{r.tipo === "fechamento" ? "FECHADO" : r.tipo === "antes da atualização" ? "ANTES DA ATUALIZAÇÃO" : "BAIXADO"}</span>
               {r.lojas.join(", ")}
             </div>
             <div className="text-[10px] text-gray-500">{new Date(r.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} · {n0(r.pecas)} pçs · {brl(r.valor)}{r.por ? ` · ${r.por}` : ""}</div>
           </div>
-          <button onClick={() => salvarArquivo(`FW27_${r.tipo === "fechamento" ? "fechado" : "baixado"}_${r.quando.slice(0, 16).replace(/[^0-9]/g, "")}.xlsx`, excelDoRegistro(r)).catch(() => {})}
+          <button onClick={() => salvarArquivo(`FW27_${r.tipo === "fechamento" ? "fechado" : r.tipo === "antes da atualização" ? "antes_da_atualizacao" : "baixado"}_${r.quando.slice(0, 16).replace(/[^0-9]/g, "")}.xlsx`, excelDoRegistro(r)).catch(() => {})}
             className="h-8 px-2.5 rounded-lg bg-white border border-gray-200 text-[10px] font-black flex items-center gap-1"><Download size={12} /> Excel</button>
         </div>
       ))}

@@ -84,6 +84,12 @@ service cloud.firestore {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.porUid == request.auth.uid);
     }
 
+    // Atualização geral da Sugestão FW27: o master grava a data e a mensagem; todo login lê para aplicar no seu pedido.
+    match /fw27Config/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isMaster();
+    }
+
     // Fatos relevantes da Sugestão FW27: qualquer login propõe (fica pendente); master/admin aceita, recusa e edita.
     // Os outros leem os aprovados para todos e os que eles mesmos criaram.
     match /fw27Fatos/{fatoId} {

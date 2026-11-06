@@ -10,7 +10,7 @@ import { collection, doc, getDocs, setDoc, query, where } from "firebase/firesto
 import { db } from "../firebase";
 import { Fw27Linha, Fw27Pedido } from "./fw27";
 
-export type TipoRegistro = "exportação" | "fechamento";
+export type TipoRegistro = "exportação" | "fechamento" | "antes da atualização";
 
 /** Item guardado: [loja, código adidas, artigo, descrição, data de entrega, tamanho, peças, preço PDV]. */
 export type ItemRegistro = [string, string, string, string, string, string, number, number];
