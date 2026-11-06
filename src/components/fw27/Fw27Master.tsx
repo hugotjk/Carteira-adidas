@@ -10,7 +10,7 @@ import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import { salvarArquivo } from "../../lib/salvarArquivo";
 import manualUrl from "../../assets/manual-sugestao-fw27.pdf?url";
-import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
+import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO, linhasZsolDaLoja, arquivoZsol, nomeArquivoZsol } from "../../services/fw27Exportar";
 import { criarFato, revisarFato, listarFatos, Fw27Fato, Visibilidade, EfeitoFato } from "../../services/fw27Fatos";
 import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
 import {
@@ -1358,11 +1358,16 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
   const [msg, setMsg] = React.useState<Record<string, string>>({});
   const baixar = async (l: Fw27Loja) => {
     try {
+      // Dois arquivos: o do CLICK (site) e, se houver artigo fora do site, a ZSOL (mandar por e-mail).
       const r = exportarLojaFornecedor(l, linhas, { datas: pedido.datas });
       const st = await salvarArquivo(r.nomeArquivo, r.blob);
+      const zs = linhasZsolDaLoja(l, linhas, pedido.datas);
+      const pecasZ = zs.reduce((a, z) => a + z[6], 0);
+      let stZ: string = "nada";
+      if (st === "salvo" && zs.length) stZ = await salvarArquivo(nomeArquivoZsol(l.nome, String(l.codAdidas || "")), arquivoZsol(zs));
       if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id], user?.uid)); onRegistro(); }
-      const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs não estão no carrinho do site` : "";
-      setMsg((m) => ({ ...m, [l.id]: st === "salvo" ? `Baixado: ${n0(r.pecas)} peças${fora}` : "Download cancelado" }));
+      setMsg((m) => ({ ...m, [l.id]: st !== "salvo" ? "Download cancelado"
+        : `Baixado: CLICK ${n0(r.pecas)} peças` + (zs.length ? (stZ === "salvo" ? ` + ZSOL ${n0(pecasZ)} peças (mandar por e-mail)` : " · ZSOL cancelada") : "") }));
     } catch (e: any) {
       setMsg((m) => ({ ...m, [l.id]: "Não deu para gerar: " + (e?.message || e) }));
     }
@@ -1370,15 +1375,16 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
   return (
     <Card>
       <h3 className="text-sm font-extrabold">Exportar para o site adidas</h3>
-      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Um arquivo por loja, no formato de importação do site (abas Apparel e Hardware). No site, crie um carrinho para a loja e importe nele o arquivo dela: a loja é a do carrinho.</p>
+      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Por loja, o Baixar gera dois arquivos: o do <b>CLICK</b> (importar no site: crie um carrinho para a loja e importe nele o arquivo dela) e, se houver artigos que não estão no site, a <b>ZSOL</b> (mandar por e-mail).</p>
       {pedido.lojas.map((l) => {
         const sem = !String(l.codAdidas || "").trim();
         const pc = linhas.filter((x) => x.loja.id === l.id).reduce((a, x) => a + (ARTIGOS_NO_CARRINHO.has(x.produto.artigo) ? x.qtd : 0), 0);
+        const pz = linhas.filter((x) => x.loja.id === l.id).reduce((a, x) => a + (ARTIGOS_NO_CARRINHO.has(x.produto.artigo) ? 0 : x.qtd), 0);
         return (
           <div key={l.id} className="flex items-center gap-2 py-2 border-t border-gray-50">
             <div className="flex-1 min-w-0">
               <div className="text-xs font-extrabold truncate">{l.nome} <span className="text-gray-400 font-bold">· {sem ? "sem código adidas (Sold To em branco)" : l.codAdidas}</span></div>
-              <div className="text-[10px] text-gray-500">{msg[l.id] || `${n0(pc)} peças de artigos do carrinho`}</div>
+              <div className="text-[10px] text-gray-500">{msg[l.id] || `CLICK ${n0(pc)} peças` + (pz ? ` · ZSOL ${n0(pz)} peças` : "")}</div>
             </div>
             <button onClick={() => baixar(l)} className="h-9 px-3 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
               <Download size={13} /> Baixar

@@ -11,7 +11,7 @@ import { Download, ChevronDown, ChevronUp, RefreshCw, Bell, FileArchive, AlertTr
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../context/AuthContext";
 import { salvarArquivo } from "../../lib/salvarArquivo";
-import { arquivoClickDeItens, zipArquivos, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
+import { arquivoClickDeItens, zipArquivos, ARTIGOS_NO_CARRINHO, arquivoZsol, nomeArquivoZsol, LinhaZsol } from "../../services/fw27Exportar";
 import { listarRegistros, listarPedidosTodos, montarRegistro, excelDoRegistro, Fw27Registro, ItemRegistro, PedidoDeLogin } from "../../services/fw27Historico";
 import { lerReset, resetarTodos, diferencasDoPadrao, Fw27Reset } from "../../services/fw27Reset";
 import { PRODUTOS, precoBase, aplicarVerbas, calcular, totais, lojaNaBase, Fw27Pedido } from "../../services/fw27";
@@ -107,6 +107,7 @@ const Botao: React.FC<{ onClick?: () => void; disabled?: boolean; title?: string
 
 const lancamentoDe = (a: string) => PROD.get(a)?.lancamento;
 const clickDe = (v: VersaoLoja) => arquivoClickDeItens(v.loja, v.cod, v.itens.map((i) => [i[2], i[4], i[5], i[6]] as [string, string, string, number]), v.datas, lancamentoDe);
+const zsolDe = (v: VersaoLoja): LinhaZsol[] => v.itens.filter((i) => !ARTIGOS_NO_CARRINHO.has(i[2])).map((i) => [i[4], i[1], v.gestor, i[0], i[2], i[3], i[6], i[5]]);
 const excelDe = (v: VersaoLoja) => excelDoRegistro({ id: v.id, quando: v.quando, tipo: v.tipo, por: v.por, lojas: [v.loja], pecas: v.pecas, valor: 0, itens: v.itens });
 const carimbo = (iso: string) => iso.slice(0, 16).replace(/[^0-9]/g, "");
 
@@ -238,7 +239,7 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             <Botao escuro onClick={baixarTodosClick} disabled={!ultimas.length}><FileArchive size={12} /> CLICK de todas (.zip)</Botao>
-            <Botao disabled title="Aguardando o modelo da planilha ZSOL"><FileArchive size={12} /> ZSOL de todas (.zip)</Botao>
+            <Botao onClick={() => { const z = ultimas.flatMap(zsolDe); if (z.length) baixar(`FW27_ZSOL_${new Set(z.map((x) => x[3])).size}_lojas_${carimbo(new Date().toISOString())}.xlsx`, arquivoZsol(z)); }} disabled={!ultimas.some((v) => v.foraClick > 0)} title="Uma planilha só, com todas as lojas (como o modelo da adidas)"><FileSpreadsheet size={12} /> ZSOL de todas</Botao>
             <Botao onClick={() => baixar(`FW27_todas_as_lojas_${carimbo(new Date().toISOString())}.xlsx`, excelConsolidado(ultimas))} disabled={!ultimas.length}><FileSpreadsheet size={12} /> Excel com todas</Botao>
           </div>
         </div>
@@ -291,7 +292,7 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                 </div>
                 <div className="flex gap-1.5">
                   <Botao escuro onClick={() => { const r = clickDe(ult); baixar(r.nomeArquivo, r.blob); }}><Download size={12} /> CLICK</Botao>
-                  <Botao disabled title={ult.foraClick ? "Aguardando o modelo da planilha ZSOL" : "Nada fora do CLICK nesta loja"}><Download size={12} /> ZSOL</Botao>
+                  <Botao disabled={!ult.foraClick} title={ult.foraClick ? "Artigos que não estão no CLICK (mandar por e-mail)" : "Nada fora do CLICK nesta loja"} onClick={() => baixar(nomeArquivoZsol(loja, ult.cod).replace(".xlsx", `_${carimbo(ult.quando)}.xlsx`), arquivoZsol(zsolDe(ult)))}><Download size={12} /> ZSOL</Botao>
                   <Botao onClick={() => baixar(`FW27_${loja.replace(/[^A-Za-z0-9]+/g, "_")}_conferencia_${carimbo(ult.quando)}.xlsx`, excelDe(ult))}><FileSpreadsheet size={12} /> Excel</Botao>
                 </div>
               </div>

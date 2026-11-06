@@ -5,6 +5,7 @@
  * Do carrinho do site vêm só nome, EAN, preço, aba e data de lançamento; as datas são as do app.
  */
 import { zipSync, strToU8 } from "fflate";
+import * as XLSX from "xlsx-js-style";
 import { MODELO_CARRINHO } from "../data/fw27CarrinhoModelo";
 import fornecedor from "../data/fw27Fornecedor.json";
 import { Fw27Linha, Fw27Loja, CALENDARIO, podeComprar } from "./fw27";
@@ -132,3 +133,47 @@ export async function zipArquivos(arquivos: { nome: string; blob: Blob }[]): Pro
   }
   return new Blob([zipSync(conteudo)], { type: "application/zip" });
 }
+
+// ---------------- ZSOL (importação manual, por e-mail) ----------------
+// Artigos que não estão no CLICK. Mesmo layout do modelo da adidas (zsol goleiro SS27):
+// Data | customer purchase order number | customer number | gestor | loja | material number | produto | order quantity in sales units | grid value
+
+/** Uma linha da ZSOL: [data de entrega AAAA-MM-DD, código adidas, gestor, loja, artigo, produto, peças, tamanho]. */
+export type LinhaZsol = [string, string, string, string, string, string, number, string];
+
+export const PEDIDO_ZSOL = "FW27";
+
+/** Linhas da ZSOL de uma loja a partir do pedido (só artigos fora do carrinho do site). */
+export function linhasZsolDaLoja(loja: Fw27Loja, linhas: Fw27Linha[], datas?: Record<string, string>): LinhaZsol[] {
+  const out: LinhaZsol[] = [];
+  linhas.filter((x) => x.loja.id === loja.id && x.qtd > 0 && !ARTIGOS_NO_CARRINHO.has(x.produto.artigo)).forEach((x) => {
+    Object.keys(x.gradeEntregas).sort().forEach((d) => x.produto.tamanhos.forEach((t) => {
+      const q = Number(x.gradeEntregas[d]?.[t] || 0);
+      if (q > 0) out.push([datas?.[d] || d, String(loja.codAdidas || ""), String(loja.gestor || ""), loja.nome, x.produto.artigo, x.produto.descricao, q, t]);
+    }));
+  });
+  return out;
+}
+
+/** Arquivo ZSOL (uma ou várias lojas no mesmo arquivo, como o modelo). */
+export function arquivoZsol(linhas: LinhaZsol[]): Blob {
+  const head = { font: { bold: true } };
+  const aoa: any[][] = [["Data", "customer purchase order number", "customer number", "gestor", "loja", "material number", "produto", "order quantity in sales units", "grid value"]];
+  linhas.forEach(([d, cod, gestor, loja, art, prod, q, t]) => {
+    // Data como número de série do Excel (sem fuso horário), formatada como data.
+    const [y, m, dd] = d.split("-").map(Number);
+    aoa.push([(Date.UTC(y, m - 1, dd) - Date.UTC(1899, 11, 30)) / 864e5, PEDIDO_ZSOL, cod, gestor, loja, art, prod, q, t]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for (let r = 1; r < aoa.length; r++) {
+    const c = ws[XLSX.utils.encode_cell({ r, c: 0 })]; if (c) c.z = "dd/mm/yyyy";
+    const k = ws[XLSX.utils.encode_cell({ r, c: 2 })]; if (k) { k.t = "s"; k.v = String(k.v); }
+  }
+  aoa[0].forEach((_, c) => { const ref = XLSX.utils.encode_cell({ r: 0, c }); if (ws[ref]) ws[ref].s = head; });
+  ws["!cols"] = [12, 14, 13, 14, 22, 12, 40, 12, 10].map((wch) => ({ wch }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "ZSOL");
+  return new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+
+export const nomeArquivoZsol = (lojaNome: string, soldTo: string) => `FW27_ZSOL_${lojaNome.replace(/[^A-Za-z0-9]+/g, "_")}_${soldTo || "SEM_CODIGO"}.xlsx`;
