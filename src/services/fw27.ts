@@ -662,7 +662,7 @@ const diasNoMes = (ano: number, mes: number) => new Date(Date.UTC(ano, mes, 0)).
  * Curva padrão de compra por mês, em PEÇAS (Hugo, 03/11
  * jun 10 · jul 30 · ago 15 · set 20 · out 13 · nov 12 (% das peças da loja em cada mês).
  */
-export const CURVA_SUGERIDA: Record<string, number> = { "06": 10, "07": 30, "08": 15, "09": 20, "10": 13, "11": 12 };
+export const CURVA_SUGERIDA: Record<string, number> = { "06": 10, "07": 10, "08": 30, "09": 23, "10": 14, "11": 13 };
 export const curvaPadrao = (): Record<string, number> => {
   const out: Record<string, number> = {};
   MESES_CURVA.forEach((m) => { out[m] = CURVA_SUGERIDA[m] ?? 0; });
@@ -675,7 +675,7 @@ export function curvaDe(pedido: Fw27Pedido): Record<string, number> {
   const out: Record<string, number> = {};
   if (!MESES_CURVA.some((m) => salvo[m] !== undefined)) return curvaPadrao();
   // Pedido salvo com uma curva padrão antiga passa para a atual.
-  if (["12,33,20,15,10,10", "10,33,15,17,13,12"].includes(MESES_CURVA.map((m) => Number(salvo[m] || 0)).join(","))) return curvaPadrao();
+  if (["12,33,20,15,10,10", "10,33,15,17,13,12", "10,30,15,20,13,12"].includes(MESES_CURVA.map((m) => Number(salvo[m] || 0)).join(","))) return curvaPadrao();
   MESES_CURVA.forEach((m) => { out[m] = Number(salvo[m] || 0); });
   return out;
 }
