@@ -1,5 +1,5 @@
 {
- "_leia": "Artigos da AMD que NÃO entram no app. Para voltar um artigo, tire daqui e rode scripts/amd-para-json.mjs. Os do SPECIAL guardam os dados da AMD de 23/10 (subgrupo SPECIAL). \"incluir\": artigos que entram mesmo fora das linhas FW27 da AMD. \"lancamento\": data de lançamento usada no app no lugar da AMD (definido pelo Hugo em 04/11/2026).",
+ "_leia": "Artigos da AMD que NÃO entram no app. Para voltar um artigo, tire daqui e rode scripts/amd-para-json.mjs. Os do SPECIAL guardam os dados da AMD de 23/10 (subgrupo SPECIAL). \"incluir\": artigos que entram mesmo fora das linhas FW27 da AMD. \"lancamento\": data de lançamento usada no app no lugar da AMD (definido pelo Hugo; 06/11/2026: linha Third toda em 06/08).",
  "fora": {
   "LY3626": {
    "motivo": "PROMO não entra no app"
@@ -107,8 +107,14 @@
   }
  },
  "lancamento": {
-  "MF9669": "2027-07-01",
-  "KY3172": "2027-06-01",
-  "LY3673": "2027-07-30"
+  "LY3673": "2027-08-06",
+  "KS4902": "2027-08-06",
+  "LY3628": "2027-08-06",
+  "KG0063": "2027-08-06",
+  "KG0064": "2027-08-06",
+  "KS7469": "2027-08-06",
+  "LK9161": "2027-08-06",
+  "LY3627": "2027-08-06",
+  "LY3629": "2027-08-06"
  }
 }

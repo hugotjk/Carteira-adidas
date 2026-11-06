@@ -7,12 +7,13 @@
  */
 import React from "react";
 import * as XLSX from "xlsx-js-style";
-import { Download, ChevronDown, ChevronUp, RefreshCw, Bell, FileArchive, AlertTriangle, Search, FileSpreadsheet, Lock, Pencil } from "lucide-react";
+import { Download, ChevronDown, ChevronUp, RefreshCw, Bell, FileArchive, AlertTriangle, Search, FileSpreadsheet, Lock, Pencil, RotateCcw } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../context/AuthContext";
 import { salvarArquivo } from "../../lib/salvarArquivo";
-import { arquivoClickDeItens, zipArquivos, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
+import { arquivoClickDeItens, zipArquivos, ARTIGOS_NO_CARRINHO, arquivoZsol, nomeArquivoZsol, LinhaZsol } from "../../services/fw27Exportar";
 import { listarRegistros, listarPedidosTodos, montarRegistro, excelDoRegistro, Fw27Registro, ItemRegistro, PedidoDeLogin } from "../../services/fw27Historico";
+import { lerReset, resetarTodos, diferencasDoPadrao, Fw27Reset } from "../../services/fw27Reset";
 import { PRODUTOS, precoBase, aplicarVerbas, calcular, totais, lojaNaBase, Fw27Pedido } from "../../services/fw27";
 
 // ---------------- dados ----------------
@@ -25,7 +26,7 @@ export interface VersaoLoja { id: string; loja: string; cod: string; gestor: str
 
 function versoesDe(regs: Fw27Registro[]): VersaoLoja[] {
   const out: VersaoLoja[] = [];
-  regs.forEach((r) => {
+  regs.filter((r) => r.tipo !== "antes da atualização").forEach((r) => {
     const porLoja = new Map<string, ItemRegistro[]>();
     r.lojas.forEach((l) => porLoja.set(l, []));
     r.itens.forEach((i) => { if (!porLoja.has(i[0])) porLoja.set(i[0], []); porLoja.get(i[0])!.push(i); });
@@ -106,6 +107,7 @@ const Botao: React.FC<{ onClick?: () => void; disabled?: boolean; title?: string
 
 const lancamentoDe = (a: string) => PROD.get(a)?.lancamento;
 const clickDe = (v: VersaoLoja) => arquivoClickDeItens(v.loja, v.cod, v.itens.map((i) => [i[2], i[4], i[5], i[6]] as [string, string, string, number]), v.datas, lancamentoDe);
+const zsolDe = (v: VersaoLoja): LinhaZsol[] => v.itens.filter((i) => !ARTIGOS_NO_CARRINHO.has(i[2])).map((i) => [i[4], i[1], v.gestor, i[0], i[2], i[3], i[6], i[5]]);
 const excelDe = (v: VersaoLoja) => excelDoRegistro({ id: v.id, quando: v.quando, tipo: v.tipo, por: v.por, lojas: [v.loja], pecas: v.pecas, valor: 0, itens: v.itens });
 const carimbo = (iso: string) => iso.slice(0, 16).replace(/[^0-9]/g, "");
 
@@ -149,6 +151,8 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
   const [abertas, setAbertas] = React.useState<Record<string, boolean>>({});
   const [abertosPed, setAbertosPed] = React.useState<Record<string, boolean>>({});
   const [msg, setMsg] = React.useState("");
+  const [reset, setReset] = React.useState<Fw27Reset | null>(null);
+  React.useEffect(() => { lerReset().then(setReset); }, []);
 
   const versoes = React.useMemo(() => versoesDe(regs || []), [regs]);
   const porLoja = React.useMemo(() => {
@@ -235,7 +239,7 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             <Botao escuro onClick={baixarTodosClick} disabled={!ultimas.length}><FileArchive size={12} /> CLICK de todas (.zip)</Botao>
-            <Botao disabled title="Aguardando o modelo da planilha ZSOL"><FileArchive size={12} /> ZSOL de todas (.zip)</Botao>
+            <Botao onClick={() => { const z = ultimas.flatMap(zsolDe); if (z.length) baixar(`FW27_ZSOL_${new Set(z.map((x) => x[3])).size}_lojas_${carimbo(new Date().toISOString())}.xlsx`, arquivoZsol(z)); }} disabled={!ultimas.some((v) => v.foraClick > 0)} title="Uma planilha só, com todas as lojas (como o modelo da adidas)"><FileSpreadsheet size={12} /> ZSOL de todas</Botao>
             <Botao onClick={() => baixar(`FW27_todas_as_lojas_${carimbo(new Date().toISOString())}.xlsx`, excelConsolidado(ultimas))} disabled={!ultimas.length}><FileSpreadsheet size={12} /> Excel com todas</Botao>
           </div>
         </div>
@@ -288,7 +292,7 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                 </div>
                 <div className="flex gap-1.5">
                   <Botao escuro onClick={() => { const r = clickDe(ult); baixar(r.nomeArquivo, r.blob); }}><Download size={12} /> CLICK</Botao>
-                  <Botao disabled title={ult.foraClick ? "Aguardando o modelo da planilha ZSOL" : "Nada fora do CLICK nesta loja"}><Download size={12} /> ZSOL</Botao>
+                  <Botao disabled={!ult.foraClick} title={ult.foraClick ? "Artigos que não estão no CLICK (mandar por e-mail)" : "Nada fora do CLICK nesta loja"} onClick={() => baixar(nomeArquivoZsol(loja, ult.cod).replace(".xlsx", `_${carimbo(ult.quando)}.xlsx`), arquivoZsol(zsolDe(ult)))}><Download size={12} /> ZSOL</Botao>
                   <Botao onClick={() => baixar(`FW27_${loja.replace(/[^A-Za-z0-9]+/g, "_")}_conferencia_${carimbo(ult.quando)}.xlsx`, excelDe(ult))}><FileSpreadsheet size={12} /> Excel</Botao>
                 </div>
               </div>
@@ -310,6 +314,8 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
         })}
       </Card>
 
+      {(userProfile?.role === "master" || user?.email === "hugotjk2@gmail.com") && <ResetCard reset={reset} onFeito={(r) => { setReset(r); recarregar(); }} logins={andamento} />}
+
       {/* ---------------- pedidos em andamento ---------------- */}
       <Card>
         <h3 className="text-sm font-extrabold">Pedidos em andamento</h3>
@@ -326,6 +332,7 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
           const baixadas = x.pedido.lojas.filter((l) => lojasBaixadas.has(l.nome)).length;
           const fechado = x.pedido.status === "enviado";
           const pctVerba = x.tot.verba ? (x.tot.valor / x.tot.verba) * 100 : 0;
+          const dif = diferencasDoPadrao(x.pedido);
           return (
             <div key={x.uid} className="border-t border-gray-50 py-2.5">
               <div className="flex items-center gap-2 flex-wrap">
@@ -340,6 +347,14 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                   <div className="text-[10px] text-gray-500 mt-0.5 ml-5">
                     {x.pedido.lojas.length} {x.pedido.lojas.length === 1 ? "loja" : "lojas"} · <b className="text-gray-800">{n0(x.tot.pecas)} pçs</b> · {brl(x.tot.valor)} · {pct0(pctVerba)} da verba · mexeu {haQuanto(x.pedido.atualizadoEm)} ·{" "}
                     <span className={cn("font-bold", baixadas === x.pedido.lojas.length ? "text-emerald-700" : baixadas ? "text-blue-700" : "text-gray-400")}>baixou {baixadas} de {x.pedido.lojas.length}</span>
+                  </div>
+                  <div className="flex gap-1 flex-wrap mt-1 ml-5">
+                    {reset && ((x.pedido.resetEm || "") >= reset.em
+                      ? <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-700">resetado {quandoBR(x.pedido.resetEm!)}</span>
+                      : <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-blue-50 text-blue-700">não resetado</span>)}
+                    {dif.curva && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">curva própria</span>}
+                    {dif.subgrupos && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">% subgrupos próprio</span>}
+                    {dif.editados > 0 && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{dif.editados} {dif.editados === 1 ? "produto editado" : "produtos editados"} à mão</span>}
                   </div>
                 </button>
                 <Botao onClick={() => { const r = montarRegistro("exportação", x.pedido.porEmail || "", x.pedido, x.linhas); baixar(`FW27_pedido_atual_${(x.pedido.porEmail || x.uid).replace(/[^A-Za-z0-9]+/g, "_")}.xlsx`, excelDoRegistro(r)); }}>
@@ -380,6 +395,62 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
         })}
       </Card>
     </div>
+  );
+};
+
+
+// ---------------- atualização geral (só master) ----------------
+
+const ResetCard: React.FC<{ reset: Fw27Reset | null; onFeito: (r: Fw27Reset) => void; logins: { uid: string; pedido: Fw27Pedido }[] }> = ({ reset, onFeito, logins }) => {
+  const { user } = useAuth();
+  const [aberto, setAberto] = React.useState(false);
+  const [armado, setArmado] = React.useState(false);
+  const [estado, setEstado] = React.useState("");
+  React.useEffect(() => { if (!armado) return; const t = setTimeout(() => setArmado(false), 5000); return () => clearTimeout(t); }, [armado]);
+  const fazer = async () => {
+    if (!armado) { setArmado(true); return; }
+    setArmado(false); setEstado(`Resetando ${logins.length} pedidos…`);
+    try {
+      const { r, feitos, falhas } = await resetarTodos(logins, user?.email || "");
+      onFeito(r);
+      setEstado(`Pronto: ${feitos} pedidos resetados${falhas ? ` · ${falhas} não deram (tente de novo)` : ""}. Peça para fecharem e abrirem o app.`);
+      setAberto(false);
+    } catch { setEstado("Não consegui gravar. Confira se as regras do Firebase (fw27Config) foram publicadas."); }
+  };
+  return (
+    <Card className="border-amber-200">
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="min-w-0">
+          <h3 className="text-sm font-extrabold flex items-center gap-1.5"><RotateCcw size={14} /> Resetar todos os pedidos</h3>
+          <p className="text-[10px] text-gray-500 mt-0.5 max-w-2xl">
+            Depois de mudar a curva, os % dos subgrupos ou a AMD: volta o pedido de todos os franqueados para a sugestão nova. Avise no WhatsApp antes.
+          </p>
+          {reset && <p className="text-[10px] font-bold text-gray-700 mt-1">Último reset: {quandoBR(reset.em)} por {reset.por}</p>}
+        </div>
+        {!aberto && <Botao onClick={() => setAberto(true)}><RotateCcw size={12} /> Preparar reset</Botao>}
+      </div>
+      {aberto && (
+        <div className="mt-3 grid md:grid-cols-2 gap-3">
+          <div className="text-[11px] space-y-1">
+            <div className="font-extrabold text-emerald-700">Fica como está</div>
+            <div className="text-gray-600">Lojas, verba total, % de cada loja, grades por tamanho e grupos de grade.</div>
+            <div className="font-extrabold text-amber-700 pt-1">Volta para a sugestão nova</div>
+            <div className="text-gray-600">Curva dos meses, % dos subgrupos, quantidades e entregas editadas à mão, datas trocadas. Pedido fechado volta a rascunho.</div>
+          </div>
+          <div className="space-y-2 text-[11px] text-gray-600">
+            <div>Antes de mudar, o pedido de cada um fica guardado no Histórico ("Antes da atualização"), para consultar ou voltar a mão se precisar.</div>
+            <div>Quem estiver com o app aberto recebe ao abrir de novo ou voltar para a aba do navegador.</div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={fazer} className={cn("flex-1 h-9 rounded-xl text-[11px] font-black text-white", armado ? "bg-red-600" : "bg-amber-600")}>
+                {armado ? `Toque de novo: resetar ${logins.length} pedidos` : `Resetar ${logins.length} pedidos`}
+              </button>
+              <button onClick={() => { setAberto(false); setArmado(false); }} className="h-9 px-3 rounded-xl bg-gray-100 text-[11px] font-black">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {estado && <p className="text-[10px] font-bold text-gray-600 mt-2">{estado}</p>}
+    </Card>
   );
 };
 

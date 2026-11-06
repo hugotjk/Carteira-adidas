@@ -10,7 +10,7 @@ import { useData } from "../../context/DataContext";
 import ProductImage from "../ProductImage";
 import { salvarArquivo } from "../../lib/salvarArquivo";
 import manualUrl from "../../assets/manual-sugestao-fw27.pdf?url";
-import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
+import { exportarLojaFornecedor, ARTIGOS_NO_CARRINHO, linhasZsolDaLoja, arquivoZsol, nomeArquivoZsol } from "../../services/fw27Exportar";
 import { criarFato, revisarFato, listarFatos, Fw27Fato, Visibilidade, EfeitoFato } from "../../services/fw27Fatos";
 import { montarRegistro, salvarRegistro, listarRegistros, excelDoRegistro, Fw27Registro } from "../../services/fw27Historico";
 import {
@@ -20,6 +20,7 @@ import {
 } from "../../services/fw27";
 import { useFw27Pedido, SaveState } from "../../services/fw27Store";
 import Fw27Acompanhamento, { useAcompanhamento } from "./Fw27Acompanhamento";
+import { lerReset, precisaReset, aplicarReset, Fw27Reset } from "../../services/fw27Reset";
 
 const SECTIONS = [
   { id: "resumos", label: "Resumos FW27", icon: LayoutList },
@@ -238,6 +239,26 @@ const Fw27Master: React.FC = () => {
       lojas: visiveis.map((b) => ({ id: novoId(), nome: b.nome, verba: 0, gestor: b.gestor, codAdidas: b.codAdidas })),
     }));
   }, [estado, tudo, travado, pedidoSalvo.lojasAuto, pedidoSalvo.lojas.length, visiveis, atualizar]);
+
+  // Atualização geral do master: lê ao abrir e ao voltar para a aba do navegador. Se o pedido ainda não recebeu,
+  // guarda uma cópia no Histórico e volta ao padrão novo (lojas, verba e grades ficam).
+  const [reset, setReset] = React.useState<Fw27Reset | null>(null);
+  React.useEffect(() => {
+    lerReset().then(setReset);
+    const aoVoltar = () => { if (document.visibilityState === "visible") lerReset().then(setReset); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, []);
+  const aplicando = React.useRef("");
+  React.useEffect(() => {
+    if (estado === "carregando" || !reset || !precisaReset(pedidoSalvo, reset) || aplicando.current === reset.em) return;
+    aplicando.current = reset.em;
+    (async () => {
+      const antes = aplicarVerbas(pedidoSalvo);
+      if (antes.lojas.length) await salvarRegistro(montarRegistro("antes da atualização", user?.email || "", antes, calcular(antes), undefined, user?.uid));
+      atualizar((p) => aplicarReset(p, reset));
+    })();
+  }, [estado, reset, pedidoSalvo, atualizar, user?.email, user?.uid]);
 
 
   return (
@@ -982,7 +1003,7 @@ const CurvaCard: React.FC<{ pedido: Fw27Pedido; atualizar: EditProps["atualizar"
       </div>
       <p className="text-[10px] text-gray-400 pb-2">
         Cada entrega cobre as vendas até a próxima, pesadas por esta curva; o lançamento leva 50% a mais.
-        Padrão: curva definida a partir da venda e do recebimento de 2026 (jun 10 · jul 30 · ago 15 · set 20 · out 13 · nov 12).
+        Padrão: jun 10 · jul 10 (Icon) · ago 30 (lançamento da Third) · set 23 · out 14 · nov 13.
       </p>
     </Card>
   );
@@ -1337,11 +1358,16 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
   const [msg, setMsg] = React.useState<Record<string, string>>({});
   const baixar = async (l: Fw27Loja) => {
     try {
+      // Dois arquivos: o do CLICK (site) e, se houver artigo fora do site, a ZSOL (mandar por e-mail).
       const r = exportarLojaFornecedor(l, linhas, { datas: pedido.datas });
       const st = await salvarArquivo(r.nomeArquivo, r.blob);
+      const zs = linhasZsolDaLoja(l, linhas, pedido.datas);
+      const pecasZ = zs.reduce((a, z) => a + z[6], 0);
+      let stZ: string = "nada";
+      if (st === "salvo" && zs.length) stZ = await salvarArquivo(nomeArquivoZsol(l.nome, String(l.codAdidas || "")), arquivoZsol(zs));
       if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id], user?.uid)); onRegistro(); }
-      const fora = r.foraDoCarrinho.length ? ` · ${r.foraDoCarrinho.length} refs não estão no carrinho do site` : "";
-      setMsg((m) => ({ ...m, [l.id]: st === "salvo" ? `Baixado: ${n0(r.pecas)} peças${fora}` : "Download cancelado" }));
+      setMsg((m) => ({ ...m, [l.id]: st !== "salvo" ? "Download cancelado"
+        : `Baixado: CLICK ${n0(r.pecas)} peças` + (zs.length ? (stZ === "salvo" ? ` + ZSOL ${n0(pecasZ)} peças (mandar por e-mail)` : " · ZSOL cancelada") : "") }));
     } catch (e: any) {
       setMsg((m) => ({ ...m, [l.id]: "Não deu para gerar: " + (e?.message || e) }));
     }
@@ -1349,15 +1375,16 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
   return (
     <Card>
       <h3 className="text-sm font-extrabold">Exportar para o site adidas</h3>
-      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Um arquivo por loja, no formato de importação do site (abas Apparel e Hardware). No site, crie um carrinho para a loja e importe nele o arquivo dela: a loja é a do carrinho.</p>
+      <p className="text-[10px] text-gray-400 mt-0.5 mb-2">Por loja, o Baixar gera dois arquivos: o do <b>CLICK</b> (importar no site: crie um carrinho para a loja e importe nele o arquivo dela) e, se houver artigos que não estão no site, a <b>ZSOL</b> (mandar por e-mail).</p>
       {pedido.lojas.map((l) => {
         const sem = !String(l.codAdidas || "").trim();
         const pc = linhas.filter((x) => x.loja.id === l.id).reduce((a, x) => a + (ARTIGOS_NO_CARRINHO.has(x.produto.artigo) ? x.qtd : 0), 0);
+        const pz = linhas.filter((x) => x.loja.id === l.id).reduce((a, x) => a + (ARTIGOS_NO_CARRINHO.has(x.produto.artigo) ? 0 : x.qtd), 0);
         return (
           <div key={l.id} className="flex items-center gap-2 py-2 border-t border-gray-50">
             <div className="flex-1 min-w-0">
               <div className="text-xs font-extrabold truncate">{l.nome} <span className="text-gray-400 font-bold">· {sem ? "sem código adidas (Sold To em branco)" : l.codAdidas}</span></div>
-              <div className="text-[10px] text-gray-500">{msg[l.id] || `${n0(pc)} peças de artigos do carrinho`}</div>
+              <div className="text-[10px] text-gray-500">{msg[l.id] || `CLICK ${n0(pc)} peças` + (pz ? ` · ZSOL ${n0(pz)} peças` : "")}</div>
             </div>
             <button onClick={() => baixar(l)} className="h-9 px-3 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
               <Download size={13} /> Baixar
@@ -1390,12 +1417,12 @@ const HistoricoCard: React.FC<{ versao: number }> = ({ versao }) => {
         <div key={r.id} className="flex items-center gap-2 py-2 border-t border-gray-50">
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-extrabold truncate">
-              <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5 mr-1.5", r.tipo === "fechamento" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700")}>{r.tipo === "fechamento" ? "FECHADO" : "BAIXADO"}</span>
+              <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5 mr-1.5", r.tipo === "fechamento" ? "bg-emerald-50 text-emerald-700" : r.tipo === "antes da atualização" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700")}>{r.tipo === "fechamento" ? "FECHADO" : r.tipo === "antes da atualização" ? "ANTES DA ATUALIZAÇÃO" : "BAIXADO"}</span>
               {r.lojas.join(", ")}
             </div>
             <div className="text-[10px] text-gray-500">{new Date(r.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} · {n0(r.pecas)} pçs · {brl(r.valor)}{r.por ? ` · ${r.por}` : ""}</div>
           </div>
-          <button onClick={() => salvarArquivo(`FW27_${r.tipo === "fechamento" ? "fechado" : "baixado"}_${r.quando.slice(0, 16).replace(/[^0-9]/g, "")}.xlsx`, excelDoRegistro(r)).catch(() => {})}
+          <button onClick={() => salvarArquivo(`FW27_${r.tipo === "fechamento" ? "fechado" : r.tipo === "antes da atualização" ? "antes_da_atualizacao" : "baixado"}_${r.quando.slice(0, 16).replace(/[^0-9]/g, "")}.xlsx`, excelDoRegistro(r)).catch(() => {})}
             className="h-8 px-2.5 rounded-lg bg-white border border-gray-200 text-[10px] font-black flex items-center gap-1"><Download size={12} /> Excel</button>
         </div>
       ))}
