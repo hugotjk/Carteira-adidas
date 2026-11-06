@@ -86,9 +86,8 @@ export interface Fw27Pedido {
   lojasAuto?: boolean;
   /** E-mail do login dono do pedido (para o master saber de quem é no Acompanhamento). */
   porEmail?: string;
-  /** Data da última atualização geral (reset do master) que este pedido recebeu; e se o franqueado já viu o aviso. */
+  /** Data do último reset geral (feito pelo master) que este pedido recebeu. */
   resetEm?: string;
-  resetVisto?: boolean;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
   curva?: Record<string, number>;
   status: Fw27Status;

@@ -13,7 +13,7 @@ import { useAuth } from "../../context/AuthContext";
 import { salvarArquivo } from "../../lib/salvarArquivo";
 import { arquivoClickDeItens, zipArquivos, ARTIGOS_NO_CARRINHO } from "../../services/fw27Exportar";
 import { listarRegistros, listarPedidosTodos, montarRegistro, excelDoRegistro, Fw27Registro, ItemRegistro, PedidoDeLogin } from "../../services/fw27Historico";
-import { lerReset, gravarReset, diferencasDoPadrao, Fw27Reset } from "../../services/fw27Reset";
+import { lerReset, resetarTodos, diferencasDoPadrao, Fw27Reset } from "../../services/fw27Reset";
 import { PRODUTOS, precoBase, aplicarVerbas, calcular, totais, lojaNaBase, Fw27Pedido } from "../../services/fw27";
 
 // ---------------- dados ----------------
@@ -349,8 +349,8 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                   </div>
                   <div className="flex gap-1 flex-wrap mt-1 ml-5">
                     {reset && ((x.pedido.resetEm || "") >= reset.em
-                      ? <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-700">recebeu a atualização{x.pedido.resetVisto ? " · viu o aviso" : ""}</span>
-                      : <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-blue-50 text-blue-700">atualização pendente (ainda não abriu)</span>)}
+                      ? <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-700">resetado {quandoBR(x.pedido.resetEm!)}</span>
+                      : <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-blue-50 text-blue-700">não resetado</span>)}
                     {dif.curva && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">curva própria</span>}
                     {dif.subgrupos && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">% subgrupos próprio</span>}
                     {dif.editados > 0 && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{dif.editados} {dif.editados === 1 ? "produto editado" : "produtos editados"} à mão</span>}
@@ -400,37 +400,33 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
 
 // ---------------- atualização geral (só master) ----------------
 
-const MSG_PADRAO = "A AMD final chegou e a sugestão foi atualizada (curva dos meses e % dos subgrupos). Confira as quantidades antes de baixar o arquivo para o CLICK.";
-
-const ResetCard: React.FC<{ reset: Fw27Reset | null; onFeito: (r: Fw27Reset) => void; logins: { pedido: Fw27Pedido }[] }> = ({ reset, onFeito, logins }) => {
+const ResetCard: React.FC<{ reset: Fw27Reset | null; onFeito: (r: Fw27Reset) => void; logins: { uid: string; pedido: Fw27Pedido }[] }> = ({ reset, onFeito, logins }) => {
   const { user } = useAuth();
   const [aberto, setAberto] = React.useState(false);
-  const [msg, setMsg] = React.useState(MSG_PADRAO);
   const [armado, setArmado] = React.useState(false);
   const [estado, setEstado] = React.useState("");
   React.useEffect(() => { if (!armado) return; const t = setTimeout(() => setArmado(false), 5000); return () => clearTimeout(t); }, [armado]);
-  const recebidos = reset ? logins.filter((x) => (x.pedido.resetEm || "") >= reset.em).length : 0;
   const fazer = async () => {
     if (!armado) { setArmado(true); return; }
-    setArmado(false); setEstado("Gravando…");
-    try { const r = await gravarReset(msg, user?.email || ""); onFeito(r); setEstado("Pronto! Cada franqueado recebe ao abrir a Sugestão FW27."); setAberto(false); }
-    catch { setEstado("Não consegui gravar. Confira se as regras do Firebase (fw27Config) foram publicadas."); }
+    setArmado(false); setEstado(`Resetando ${logins.length} pedidos…`);
+    try {
+      const { r, feitos, falhas } = await resetarTodos(logins, user?.email || "");
+      onFeito(r);
+      setEstado(`Pronto: ${feitos} pedidos resetados${falhas ? ` · ${falhas} não deram (tente de novo)` : ""}. Peça para fecharem e abrirem o app.`);
+      setAberto(false);
+    } catch { setEstado("Não consegui gravar. Confira se as regras do Firebase (fw27Config) foram publicadas."); }
   };
   return (
     <Card className="border-amber-200">
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div className="min-w-0">
-          <h3 className="text-sm font-extrabold flex items-center gap-1.5"><RotateCcw size={14} /> Atualizar todos os pedidos</h3>
+          <h3 className="text-sm font-extrabold flex items-center gap-1.5"><RotateCcw size={14} /> Resetar todos os pedidos</h3>
           <p className="text-[10px] text-gray-500 mt-0.5 max-w-2xl">
-            Depois de mudar a curva, os % dos subgrupos ou a AMD: volta o pedido de todos os franqueados para a sugestão nova, com um aviso na tela deles.
+            Depois de mudar a curva, os % dos subgrupos ou a AMD: volta o pedido de todos os franqueados para a sugestão nova. Avise no WhatsApp antes.
           </p>
-          {reset && (
-            <p className="text-[10px] font-bold text-gray-700 mt-1">
-              Última: {quandoBR(reset.em)} por {reset.por} · <span className={recebidos === logins.length ? "text-emerald-700" : "text-blue-700"}>{recebidos} de {logins.length} logins já receberam</span> (recebe ao abrir o app)
-            </p>
-          )}
+          {reset && <p className="text-[10px] font-bold text-gray-700 mt-1">Último reset: {quandoBR(reset.em)} por {reset.por}</p>}
         </div>
-        {!aberto && <Botao onClick={() => setAberto(true)}><RotateCcw size={12} /> Preparar atualização</Botao>}
+        {!aberto && <Botao onClick={() => setAberto(true)}><RotateCcw size={12} /> Preparar reset</Botao>}
       </div>
       {aberto && (
         <div className="mt-3 grid md:grid-cols-2 gap-3">
@@ -439,14 +435,13 @@ const ResetCard: React.FC<{ reset: Fw27Reset | null; onFeito: (r: Fw27Reset) => 
             <div className="text-gray-600">Lojas, verba total, % de cada loja, grades por tamanho e grupos de grade.</div>
             <div className="font-extrabold text-amber-700 pt-1">Volta para a sugestão nova</div>
             <div className="text-gray-600">Curva dos meses, % dos subgrupos, quantidades e entregas editadas à mão, datas trocadas. Pedido fechado volta a rascunho.</div>
-            <div className="text-gray-500 pt-1">Antes de mudar, o app guarda uma cópia do pedido de cada um no Histórico (aparece como "Antes da atualização").</div>
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-extrabold text-gray-400 uppercase">Mensagem que o franqueado vai ver</label>
-            <textarea value={msg} onChange={(e) => setMsg(e.target.value)} className="w-full bg-gray-50 rounded-xl px-3 py-2 text-xs font-semibold outline-none min-h-20" />
-            <div className="flex gap-2">
+          <div className="space-y-2 text-[11px] text-gray-600">
+            <div>Antes de mudar, o pedido de cada um fica guardado no Histórico ("Antes da atualização"), para consultar ou voltar a mão se precisar.</div>
+            <div>Quem estiver com o app aberto recebe ao abrir de novo ou voltar para a aba do navegador.</div>
+            <div className="flex gap-2 pt-1">
               <button onClick={fazer} className={cn("flex-1 h-9 rounded-xl text-[11px] font-black text-white", armado ? "bg-red-600" : "bg-amber-600")}>
-                {armado ? `Toque de novo: atualizar ${logins.length} pedidos` : "Atualizar todos os pedidos"}
+                {armado ? `Toque de novo: resetar ${logins.length} pedidos` : `Resetar ${logins.length} pedidos`}
               </button>
               <button onClick={() => { setAberto(false); setArmado(false); }} className="h-9 px-3 rounded-xl bg-gray-100 text-[11px] font-black">Cancelar</button>
             </div>

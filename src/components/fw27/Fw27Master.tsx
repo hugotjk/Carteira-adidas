@@ -291,17 +291,6 @@ const Fw27Master: React.FC = () => {
       </div>
 
       <div className="p-4 md:p-6 space-y-4 w-full mx-auto max-w-[112rem]">
-        {pedidoSalvo.resetEm && pedidoSalvo.resetVisto === false && (
-          <div className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-start gap-3">
-            <RotateCcw size={18} className="text-amber-700 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0 text-xs text-amber-900">
-              <div className="font-extrabold">Seu pedido foi atualizado em {new Date(pedidoSalvo.resetEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
-              {reset?.mensagem && reset.em === pedidoSalvo.resetEm && <div className="mt-1 whitespace-pre-line">{reset.mensagem}</div>}
-              <div className="mt-1 text-[11px] text-amber-800">A curva dos meses, o % dos subgrupos e as quantidades voltaram para a sugestão nova. Suas lojas, a verba e as grades por tamanho continuam como estavam. A versão anterior ficou guardada no Histórico (aba Resumo).</div>
-            </div>
-            <button onClick={() => atualizar((p) => ({ ...p, resetVisto: true }))} className="h-8 px-3 rounded-lg bg-black text-white text-[10px] font-black shrink-0">Entendi</button>
-          </div>
-        )}
         <div className={cn("grid grid-cols-2 gap-2", secoes.length > 5 ? "md:grid-cols-6" : "md:grid-cols-5")}>
           {secoes.map((s) => (
             <button

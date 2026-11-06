@@ -43,7 +43,6 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
     ...(d.lojasAuto && { lojasAuto: true }),
     ...(d.porEmail && { porEmail: d.porEmail }),
     ...(d.resetEm && { resetEm: d.resetEm }),
-    ...(typeof d.resetVisto === "boolean" && { resetVisto: d.resetVisto }),
     status: d.status === "enviado" ? "enviado" : "rascunho",
     atualizadoEm: d.atualizadoEm,
     enviadoEm: d.enviadoEm,
