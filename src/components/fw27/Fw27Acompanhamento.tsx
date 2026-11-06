@@ -346,7 +346,8 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                     <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5 flex items-center gap-0.5", fechado ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
                       {fechado ? <><Lock size={8} /> FECHADO</> : <><Pencil size={8} /> RASCUNHO</>}
                     </span>
-                    {x.pedido.porEmail || "login sem e-mail salvo"}
+                    {x.nome ? <>{x.nome} <span className="text-gray-400 font-bold">· {x.pedido.porEmail}</span></> : x.pedido.porEmail || "login sem cadastro"}
+                    <span className="text-gray-400 font-semibold truncate max-w-[24rem]">· {x.pedido.lojas.map((l) => l.nome).join(", ")}</span>
                   </div>
                   <div className="text-[10px] text-gray-500 mt-0.5 ml-5">
                     {x.pedido.lojas.length} {x.pedido.lojas.length === 1 ? "loja" : "lojas"} · <b className="text-gray-800">{n0(x.tot.pecas)} pçs</b> · {brl(x.tot.valor)} · {pct0(pctVerba)} da verba · mexeu {haQuanto(x.pedido.atualizadoEm)} ·{" "}
