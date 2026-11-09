@@ -13,7 +13,25 @@ import { Fw27Pedido, pedidoVazio } from "./fw27";
 export type SaveState = "carregando" | "salvo" | "salvando" | "pendente" | "erro";
 
 const COLECAO = "fw27Pedidos";
-const ESPERA_MS = 1500;
+// Espera 8 s sem edição para gravar no Firebase (cada gravação conta na cota diária de escrita).
+const ESPERA_MS = 8000;
+const TEMPO_MAX_MS = 15000;
+
+/** Tira os zeros da grade por entrega antes de gravar (o documento fica menor; zero = sem chave). */
+function compactar(p: Fw27Pedido): Fw27Pedido {
+  if (!p.gradeEntrega) return p;
+  const ge: Fw27Pedido["gradeEntrega"] = {};
+  Object.entries(p.gradeEntrega).forEach(([k, porData]) => {
+    const m: Record<string, Record<string, number>> = {};
+    Object.entries(porData || {}).forEach(([d, porTam]) => {
+      const t: Record<string, number> = {};
+      Object.entries(porTam || {}).forEach(([tam, q]) => { if (Number(q)) t[tam] = Number(q); });
+      if (Object.keys(t).length) m[d] = t;
+    });
+    ge[k] = m; // mantém a chave mesmo vazia: produto editado para zero
+  });
+  return { ...p, gradeEntrega: ge };
+}
 const chaveLocal = (uid: string) => `fw27-pedido-${uid}`;
 
 function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
@@ -87,7 +105,11 @@ export function useFw27Pedido(uid: string | undefined, email?: string) {
     setEstado("salvando");
     try { await set(chaveLocal(uid), p); } catch { /* aparelho sem espaço */ }
     try {
-      await setDoc(doc(db, COLECAO, uid), JSON.parse(JSON.stringify(p)));
+      // Sem resposta em 15 s (cota do Firebase esgotada ou sem conexão): fica a cópia do aparelho e tenta na próxima alteração.
+      await Promise.race([
+        setDoc(doc(db, COLECAO, uid), JSON.parse(JSON.stringify(compactar(p)))),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("tempo esgotado")), TEMPO_MAX_MS)),
+      ]);
       setErro(null);
       setSalvoEm(p.atualizadoEm || null);
       setEstado(ultimo.current === p ? "salvo" : "pendente");
@@ -109,6 +131,15 @@ export function useFw27Pedido(uid: string | undefined, email?: string) {
       return novo;
     });
   }, [gravar, email]);
+
+  // Ao trocar de aba do navegador ou fechar a página com alteração pendente, grava na hora.
+  React.useEffect(() => {
+    const agora = () => { if (timer.current && ultimo.current) { window.clearTimeout(timer.current); timer.current = null; gravar(ultimo.current); } };
+    const aoEsconder = () => { if (document.visibilityState === "hidden") agora(); };
+    document.addEventListener("visibilitychange", aoEsconder);
+    window.addEventListener("pagehide", agora);
+    return () => { document.removeEventListener("visibilitychange", aoEsconder); window.removeEventListener("pagehide", agora); };
+  }, [gravar]);
 
   // Ao sair da tela com alteração pendente, salva na hora.
   React.useEffect(() => () => {
