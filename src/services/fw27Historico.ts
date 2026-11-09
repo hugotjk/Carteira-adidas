@@ -116,11 +116,21 @@ export function excelDoRegistro(r: Fw27Registro): Blob {
 }
 
 /** Pedido em andamento de um login (coleção fw27Pedidos, um documento por login). Só master lê todos (regra do Firebase). */
-export interface PedidoDeLogin { uid: string; pedido: Fw27Pedido }
+export interface PedidoDeLogin { uid: string; nome?: string; pedido: Fw27Pedido }
 export async function listarPedidosTodos(): Promise<PedidoDeLogin[] | null> {
   try {
     const snap = await getDocs(collection(db, "fw27Pedidos"));
-    return snap.docs.map((d: any) => ({ uid: d.id, pedido: d.data() as Fw27Pedido }));
+    // Pedido salvo antes de guardar o e-mail: busca o e-mail (e o nome) no cadastro de usuários pelo login.
+    const nomes = new Map<string, { email: string; name: string }>();
+    try {
+      const us = await getDocs(collection(db, "users"));
+      us.docs.forEach((u: any) => { const d = u.data() || {}; nomes.set(u.id, { email: String(d.email || ""), name: String(d.name || "") }); });
+    } catch { /* sem acesso ao cadastro */ }
+    return snap.docs.map((d: any) => {
+      const pedido = d.data() as Fw27Pedido;
+      const u = nomes.get(d.id);
+      return { uid: d.id, nome: u?.name || "", pedido: pedido.porEmail || !u?.email ? pedido : { ...pedido, porEmail: u.email } };
+    });
   } catch {
     return null; // sem permissão (admin, enquanto a regra não for publicada)
   }

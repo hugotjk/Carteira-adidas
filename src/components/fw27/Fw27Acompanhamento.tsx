@@ -19,6 +19,8 @@ import { PRODUTOS, precoBase, aplicarVerbas, calcular, totais, lojaNaBase, Fw27P
 // ---------------- dados ----------------
 
 const PROD = new Map(PRODUTOS.map((p) => [p.artigo, p]));
+/** Lojas DEMO (login de demonstração / treinamento): não entram no acompanhamento. */
+const ehDemo = (loja: string) => /^DEMO\b/i.test(loja.trim()) || lojaNaBase(loja)?.gestor === "DEMONSTRACAO";
 const custoDe = (artigo: string, precoPdv: number) => { const p = PROD.get(artigo); return p ? precoBase(p) : precoPdv / 2.28; };
 
 /** Uma versão baixada (ou fechada) de uma loja. */
@@ -31,6 +33,7 @@ function versoesDe(regs: Fw27Registro[]): VersaoLoja[] {
     r.lojas.forEach((l) => porLoja.set(l, []));
     r.itens.forEach((i) => { if (!porLoja.has(i[0])) porLoja.set(i[0], []); porLoja.get(i[0])!.push(i); });
     porLoja.forEach((itens, loja) => {
+      if (ehDemo(loja)) return;
       const fora = itens.filter((i) => !ARTIGOS_NO_CARRINHO.has(i[2]));
       out.push({
         id: r.id + "|" + loja, loja, cod: itens[0]?.[1] || "", quando: r.quando, tipo: r.tipo, por: r.por, itens, datas: r.datas,
@@ -67,7 +70,7 @@ export function useAcompanhamento(ligado: boolean) {
     return () => { vivo = false; };
   }, [ligado, versao, user?.uid, tipo, valoresTxt, tudo]);
   const visto = lerVisto(user?.uid);
-  const novos = (regs || []).filter((r) => r.quando > visto && r.porUid !== user?.uid).length;
+  const novos = (regs || []).filter((r) => r.quando > visto && r.porUid !== user?.uid && r.tipo !== "antes da atualização" && r.lojas.some((l) => !ehDemo(l))).length;
   return { regs, pedidos, novos, recarregar: () => setVersao((v) => v + 1), tudo };
 }
 
@@ -169,11 +172,12 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
   const andamento = React.useMemo(() => (pedidos || [])
     .filter((x) => x.uid !== user?.uid && x.pedido?.lojas?.length)
     .map((x) => {
-      const pedido = aplicarVerbas(x.pedido as Fw27Pedido);
+      const bruto = x.pedido as Fw27Pedido;
+      const pedido = aplicarVerbas({ ...bruto, lojas: bruto.lojas.filter((l) => !ehDemo(l.nome)) });
       const linhas = calcular(pedido);
       return { ...x, pedido, linhas, tot: totais(pedido, linhas) };
     })
-    .filter((x) => x.pedido.lojas.some((l) => daMinhaConta(l.gestor, l.nome)))
+    .filter((x) => x.pedido.lojas.length && x.pedido.lojas.some((l) => daMinhaConta(l.gestor, l.nome)))
     .sort((a, b) => ((a.pedido.atualizadoEm || "") < (b.pedido.atualizadoEm || "") ? 1 : -1)), [pedidos, user?.uid, tudo]);
 
   const gestores = Array.from(new Set([...versoes.map((v) => v.gestor), ...andamento.flatMap((x) => x.pedido.lojas.map((l) => l.gestor || ""))].filter(Boolean))).sort();
@@ -314,7 +318,7 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
         })}
       </Card>
 
-      {(userProfile?.role === "master" || user?.email === "hugotjk2@gmail.com") && <ResetCard reset={reset} onFeito={(r) => { setReset(r); recarregar(); }} logins={andamento} />}
+      {(userProfile?.role === "master" || user?.email === "hugotjk2@gmail.com") && <ResetCard reset={reset} onFeito={(r) => { setReset(r); recarregar(); }} logins={(pedidos || []).filter((x) => x.uid !== user?.uid && x.pedido?.lojas?.length)} />}
 
       {/* ---------------- pedidos em andamento ---------------- */}
       <Card>
@@ -342,7 +346,8 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                     <span className={cn("text-[8px] font-black rounded px-1.5 py-0.5 flex items-center gap-0.5", fechado ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700")}>
                       {fechado ? <><Lock size={8} /> FECHADO</> : <><Pencil size={8} /> RASCUNHO</>}
                     </span>
-                    {x.pedido.porEmail || "login sem e-mail salvo"}
+                    {x.nome ? <>{x.nome} <span className="text-gray-400 font-bold">· {x.pedido.porEmail}</span></> : x.pedido.porEmail || "login sem cadastro"}
+                    <span className="text-gray-400 font-semibold truncate max-w-[24rem]">· {x.pedido.lojas.map((l) => l.nome).join(", ")}</span>
                   </div>
                   <div className="text-[10px] text-gray-500 mt-0.5 ml-5">
                     {x.pedido.lojas.length} {x.pedido.lojas.length === 1 ? "loja" : "lojas"} · <b className="text-gray-800">{n0(x.tot.pecas)} pçs</b> · {brl(x.tot.valor)} · {pct0(pctVerba)} da verba · mexeu {haQuanto(x.pedido.atualizadoEm)} ·{" "}

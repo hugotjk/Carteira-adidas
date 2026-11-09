@@ -58,7 +58,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const userDocRef = doc(db, "users", currentUser.uid);
           let userDoc;
           try {
-            userDoc = await getDoc(userDocRef);
+            // Sem resposta do Firebase em 20 s (rede bloqueando, aparelho sem conexão boa): não fica preso em "Validando sessão".
+            userDoc = await Promise.race([
+              getDoc(userDocRef),
+              new Promise<never>((_, rej) => setTimeout(() => rej(new Error("tempo esgotado ao buscar o perfil")), 20000)),
+            ]);
           } catch (error) {
             handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
           }
@@ -83,23 +87,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const sessionKey = `login_counted_${currentUser.uid}`;
             if (!sessionStorage.getItem(sessionKey)) {
               currentLoginCount += 1;
-              try {
-                await setDoc(userDocRef, { loginCount: currentLoginCount }, { merge: true });
-                sessionStorage.setItem(sessionKey, "true");
-              } catch (e) {
-                console.error("Error updating user metrics:", e);
-              }
+              // Conta o acesso sem esperar a resposta: se a gravação demorar, não trava a entrada no app.
+              sessionStorage.setItem(sessionKey, "true");
+              setDoc(userDocRef, { loginCount: currentLoginCount }, { merge: true }).catch((e) => console.error("Error updating user metrics:", e));
             }
 
             // Force upgrade root email to master role
             let resolvedRole: "master" | "admin" | "user" = data.role || "user";
             if (currentUser.email === "hugotjk2@gmail.com" && resolvedRole !== "master") {
               resolvedRole = "master";
-              try {
-                await setDoc(userDocRef, { role: "master" }, { merge: true });
-              } catch (e) {
-                console.error("Error force-upgrading root user to master role in Firestore:", e);
-              }
+              setDoc(userDocRef, { role: "master" }, { merge: true }).catch((e) => console.error("Error force-upgrading root user to master role in Firestore:", e));
             }
 
             setUserProfile({
