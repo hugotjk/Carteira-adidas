@@ -86,6 +86,8 @@ export interface Fw27Pedido {
   lojasAuto?: boolean;
   /** E-mail do login dono do pedido (para o master saber de quem é no Acompanhamento). */
   porEmail?: string;
+  /** Ordem fixa dos produtos na aba Sugestão (artigos na ordem em que foi travada). Vazio = ordena pela quantidade. */
+  ordemFixa?: string[];
   /** Data do último reset geral (feito pelo master) que este pedido recebeu. */
   resetEm?: string;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */

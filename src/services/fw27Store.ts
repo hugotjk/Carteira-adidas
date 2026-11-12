@@ -61,6 +61,7 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
     ...(d.lojasAuto && { lojasAuto: true }),
     ...(d.porEmail && { porEmail: d.porEmail }),
     ...(d.resetEm && { resetEm: d.resetEm }),
+    ...(Array.isArray(d.ordemFixa) && d.ordemFixa.length && { ordemFixa: d.ordemFixa }),
     status: d.status === "enviado" ? "enviado" : "rascunho",
     atualizadoEm: d.atualizadoEm,
     enviadoEm: d.enviadoEm,

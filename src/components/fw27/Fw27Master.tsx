@@ -1106,8 +1106,17 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
   const qtdProd: Record<string, number> = {};
   linhas.forEach((x) => { qtdProd[x.produto.artigo] = (qtdProd[x.produto.artigo] || 0) + x.qtd; });
   const qtdSub = (pk: string) => PRODUTOS.filter((p) => p.subgrupo === pk).reduce((a, p) => a + (qtdProd[p.artigo] || 0), 0);
-  const grupos = [...SUBGRUPOS].sort((a, b) => qtdSub(b) - qtdSub(a) || SUBGRUPOS.indexOf(a) - SUBGRUPOS.indexOf(b))
-    .map((pk) => ({ pk, ps: visiveis.filter((p) => p.subgrupo === pk).sort((a, b) => (qtdProd[b.artigo] || 0) - (qtdProd[a.artigo] || 0)) }))
+  // Ordem fixa: a ordem de quando o usuário travou (produto novo vai para o fim do subgrupo).
+  const fixa = pedido.ordemFixa;
+  const pos = (a: string) => { const i = fixa ? fixa.indexOf(a) : -1; return i < 0 ? 1e6 : i; };
+  const posSub = (pk: string) => Math.min(...PRODUTOS.filter((p) => p.subgrupo === pk).map((p) => pos(p.artigo)), 1e6) + SUBGRUPOS.indexOf(pk) / 100;
+  const ordenarPorQtd = () => [...SUBGRUPOS].sort((a, b) => qtdSub(b) - qtdSub(a) || SUBGRUPOS.indexOf(a) - SUBGRUPOS.indexOf(b))
+    .flatMap((pk) => PRODUTOS.filter((p) => p.subgrupo === pk).sort((a, b) => (qtdProd[b.artigo] || 0) - (qtdProd[a.artigo] || 0)).map((p) => p.artigo));
+  const grupos = (fixa
+    ? [...SUBGRUPOS].sort((a, b) => posSub(a) - posSub(b))
+      .map((pk) => ({ pk, ps: visiveis.filter((p) => p.subgrupo === pk).sort((a, b) => pos(a.artigo) - pos(b.artigo) || a.artigo.localeCompare(b.artigo)) }))
+    : [...SUBGRUPOS].sort((a, b) => qtdSub(b) - qtdSub(a) || SUBGRUPOS.indexOf(a) - SUBGRUPOS.indexOf(b))
+      .map((pk) => ({ pk, ps: visiveis.filter((p) => p.subgrupo === pk).sort((a, b) => (qtdProd[b.artigo] || 0) - (qtdProd[a.artigo] || 0)) })))
     .filter((g) => g.ps.length);
 
   return (
@@ -1132,6 +1141,20 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       <div className="flex items-center gap-2 bg-white rounded-2xl border border-gray-100 px-3 h-11">
         <Search size={15} className="text-gray-400" />
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar referência ou descrição" aria-label="Buscar produto" className="flex-1 min-w-0 bg-transparent outline-none text-sm font-semibold" />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] font-extrabold text-gray-400 uppercase">Ordem dos produtos</span>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          <button onClick={() => atualizar((p) => { const { ordemFixa: _o, ...resto } = p; return resto; })}
+            className={cn("h-7 px-3 rounded-lg text-[10px] font-extrabold", !fixa ? "bg-black text-white" : "text-gray-500")}>Muda com a quantidade</button>
+          <button onClick={() => { if (!fixa) atualizar((p) => ({ ...p, ordemFixa: ordenarPorQtd() })); }}
+            className={cn("h-7 px-3 rounded-lg text-[10px] font-extrabold", fixa ? "bg-black text-white" : "text-gray-500")}>Fixa</button>
+        </div>
+        {fixa && (
+          <button onClick={() => atualizar((p) => ({ ...p, ordemFixa: ordenarPorQtd() }))} className="text-[10px] font-bold text-gray-500 hover:text-black flex items-center gap-1">
+            <RotateCcw size={11} /> Reordenar agora pela quantidade
+          </button>
+        )}
       </div>
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
         {["TODOS", ...SUBGRUPOS].map((f) => (
