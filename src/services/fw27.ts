@@ -773,6 +773,8 @@ export function dividirEntregas(qtd: number, pesos: number[], minimo: number): n
 }
 
 const mesDeIso = (d: string) => d.slice(5, 7);
+/** Quanto o mês de lançamento pesa a mais que os outros meses na divisão de cada produto. */
+export const PESO_MES_LANCAMENTO = 4;
 
 /**
  * Peças de cada produto por mês, para a loja inteira seguir a curva em PEÇAS
@@ -784,9 +786,12 @@ export function mesesDaLoja(pedido: Fw27Pedido, itens: { p: Fw27Produto; qtd: nu
   const somaC = MESES_CURVA.reduce((a, m) => a + (curva[m] || 0), 0) || 1;
   const total = itens.reduce((a, x) => a + x.qtd, 0);
   const meta = MESES_CURVA.map((m) => ((curva[m] || 0) / somaC) * total);
+  // Peso inicial: o mês de lançamento do produto pesa mais (a maior parte da compra entra no lançamento;
+  // ex.: Icon em julho, Third em agosto). O ajuste abaixo mantém essa preferência e fecha com a curva da loja.
   const M = itens.map((x) => {
     const pode = x.meses || new Set(datasEntrega(x.p).map(mesDeIso));
-    return MESES_CURVA.map((m) => (pode.has(m) && x.qtd > 0 ? 1 : 0));
+    const lanc = mesDeIso(inicioCompra(x.p));
+    return MESES_CURVA.map((m) => (pode.has(m) && x.qtd > 0 ? (m === lanc ? PESO_MES_LANCAMENTO : 1) : 0));
   });
   for (let it = 0; it < 60; it++) {
     M.forEach((row, i) => { const s = row.reduce((a, b) => a + b, 0); if (s > 0) row.forEach((_, j) => { row[j] *= itens[i].qtd / s; }); });
