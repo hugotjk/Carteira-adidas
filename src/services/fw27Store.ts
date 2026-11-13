@@ -13,8 +13,10 @@ import { Fw27Pedido, pedidoVazio } from "./fw27";
 export type SaveState = "carregando" | "salvo" | "salvando" | "pendente" | "erro";
 
 const COLECAO = "fw27Pedidos";
-// Espera 8 s sem edição para gravar no Firebase (cada gravação conta na cota diária de escrita).
-const ESPERA_MS = 8000;
+// Grava no aparelho 2 s depois da última edição. No Firebase (cada gravação conta na cota diária de escrita,
+// que estourou em 09/11 e 13/11), no máximo uma vez a cada 3 min, e na hora ao trocar de aba, fechar ou sair da tela.
+const ESPERA_MS = 2000;
+const INTERVALO_NUVEM_MS = 180000;
 const TEMPO_MAX_MS = 15000;
 
 /** Tira os zeros da grade por entrega antes de gravar (o documento fica menor; zero = sem chave). */
@@ -96,30 +98,54 @@ export function useFw27Pedido(uid: string | undefined, email?: string) {
       const escolhido = remoto && local ? (maisNovo(remoto.atualizadoEm, local.atualizadoEm) ? remoto : local) : remoto || local || pedidoVazio();
       setPedidoState(escolhido);
       setSalvoEm(escolhido.atualizadoEm || null);
+      // Ficou alteração só no aparelho (ex.: cota do Firebase esgotada): envia de novo quando der.
+      if (local && escolhido === local && (!remoto || !maisNovo(remoto.atualizadoEm, local.atualizadoEm))) { ultimo.current = local; pendenteAoAbrir.current = true; }
       setEstado("salvo");
     })();
     return () => { vivo = false; };
   }, [uid]);
 
-  const gravar = React.useCallback(async (p: Fw27Pedido) => {
-    if (!uid) return;
+  const ultimaNuvem = React.useRef(0);
+  const pendenteAoAbrir = React.useRef(false);
+  const timerNuvem = React.useRef<number | null>(null);
+  const naNuvem = React.useRef<Fw27Pedido | null>(null);
+
+  const gravarNuvem = React.useCallback(async (p: Fw27Pedido) => {
+    if (!uid || naNuvem.current === p) return;
+    if (timerNuvem.current) { window.clearTimeout(timerNuvem.current); timerNuvem.current = null; }
+    ultimaNuvem.current = Date.now();
     setEstado("salvando");
-    try { await set(chaveLocal(uid), p); } catch { /* aparelho sem espaço */ }
     try {
-      // Sem resposta em 15 s (cota do Firebase esgotada ou sem conexão): fica a cópia do aparelho e tenta na próxima alteração.
+      // Sem resposta em 15 s (cota do Firebase esgotada ou sem conexão): fica a cópia do aparelho e tenta de novo depois.
       await Promise.race([
         setDoc(doc(db, COLECAO, uid), JSON.parse(JSON.stringify(compactar(p)))),
         new Promise<never>((_, rej) => setTimeout(() => rej(new Error("tempo esgotado")), TEMPO_MAX_MS)),
       ]);
+      naNuvem.current = p;
       setErro(null);
       setSalvoEm(p.atualizadoEm || null);
       setEstado(ultimo.current === p ? "salvo" : "pendente");
     } catch (e: any) {
-      setErro(e?.code === "permission-denied" ? "O Firebase ainda não liberou esta tela (regras). Salvo só neste aparelho." : "Sem conexão. Salvo só neste aparelho; tenta de novo na próxima alteração.");
+      setErro(e?.code === "permission-denied" ? "O Firebase ainda não liberou esta tela (regras). Salvo só neste aparelho." : "Sem conexão com o servidor. Salvo neste aparelho; envia sozinho depois.");
       setSalvoEm(p.atualizadoEm || null);
       setEstado("erro");
     }
   }, [uid]);
+
+  /** Grava no aparelho e agenda o envio ao Firebase (na hora se já passou o intervalo, ou se agora = true). */
+  const gravar = React.useCallback(async (p: Fw27Pedido, agora = false) => {
+    if (!uid) return;
+    try { await set(chaveLocal(uid), p); } catch { /* aparelho sem espaço */ }
+    setSalvoEm(p.atualizadoEm || null);
+    const falta = INTERVALO_NUVEM_MS - (Date.now() - ultimaNuvem.current);
+    if (agora || falta <= 0) return gravarNuvem(p);
+    setEstado("salvo");
+    if (!timerNuvem.current) timerNuvem.current = window.setTimeout(() => { timerNuvem.current = null; if (ultimo.current) gravarNuvem(ultimo.current); }, falta);
+  }, [uid, gravarNuvem]);
+
+  React.useEffect(() => {
+    if (estado === "salvo" && pendenteAoAbrir.current && ultimo.current) { pendenteAoAbrir.current = false; gravar(ultimo.current); }
+  }, [estado, gravar]);
 
   /** Altera o pedido e agenda o salvamento. */
   const atualizar = React.useCallback((fn: (p: Fw27Pedido) => Fw27Pedido) => {
@@ -135,7 +161,10 @@ export function useFw27Pedido(uid: string | undefined, email?: string) {
 
   // Ao trocar de aba do navegador ou fechar a página com alteração pendente, grava na hora.
   React.useEffect(() => {
-    const agora = () => { if (timer.current && ultimo.current) { window.clearTimeout(timer.current); timer.current = null; gravar(ultimo.current); } };
+    const agora = () => {
+      if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
+      if (ultimo.current && naNuvem.current !== ultimo.current) gravar(ultimo.current, true);
+    };
     const aoEsconder = () => { if (document.visibilityState === "hidden") agora(); };
     document.addEventListener("visibilitychange", aoEsconder);
     window.addEventListener("pagehide", agora);
@@ -144,7 +173,9 @@ export function useFw27Pedido(uid: string | undefined, email?: string) {
 
   // Ao sair da tela com alteração pendente, salva na hora.
   React.useEffect(() => () => {
-    if (timer.current) { window.clearTimeout(timer.current); if (ultimo.current) gravar(ultimo.current); }
+    if (timer.current) window.clearTimeout(timer.current);
+    if (timerNuvem.current) window.clearTimeout(timerNuvem.current);
+    if (ultimo.current && naNuvem.current !== ultimo.current) gravar(ultimo.current, true);
   }, [gravar]);
 
   return { pedido, atualizar, estado, erro, salvoEm };
