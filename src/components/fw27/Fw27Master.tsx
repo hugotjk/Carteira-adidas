@@ -1027,7 +1027,9 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       delete gradeEntrega[k];
       return { ...pd, itens: { ...pd.itens, [k]: grade }, entregas, gradeEntrega };
     });
-  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total, { pedido, loja: x.loja }));
+  // Mudou o total da loja: refaz a grade pelo % de tamanhos da loja (o mesmo da tela Representatividade).
+  // Quem acerta a grade mexendo nos tamanhos não precisa mexer no total depois.
+  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeDe(p, Math.round(total), { pedido, loja: x.loja }));
   // Grade por entrega: mexeu numa célula, o resto (totais da loja, do tamanho e da entrega) acompanha.
   const salvarMatriz = (p: Fw27Produto, x: Fw27Linha, m: Record<string, Record<string, number>>) =>
     atualizar((pd) => ({ ...pd, gradeEntrega: { ...(pd.gradeEntrega || {}), [chaveItem(p.artigo, x.loja.id)]: m } }));
@@ -1038,13 +1040,10 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     m[d][t] = Math.round(v);
     salvarMatriz(p, x, m);
   };
-  // Formato da grade da loja para redistribuir uma entrega: a grade editada à mão (se houver), senão a da loja
-  // (vendas / grupo / grade única). Não usa a composição atual da entrega, que numa entrega pequena fica
+  // Formato da grade da loja para redistribuir uma entrega: o % de tamanhos da loja (Representatividade:
+  // vendas / grupo / grade única). Não usa a composição atual da entrega, que numa entrega pequena fica
   // concentrada em poucos tamanhos e, a cada edição, concentrava mais (ex.: 12 peças viravam só M e L).
-  const formatoGrade = (p: Fw27Produto, x: Fw27Linha) => {
-    const ed = pedido.itens[chaveItem(p.artigo, x.loja.id)];
-    return ed && p.tamanhos.some((t) => Number(ed[t]) > 0) ? ed : gradeDe(p, 1000, { pedido, loja: x.loja });
-  };
+  const formatoGrade = (p: Fw27Produto, x: Fw27Linha) => gradeDe(p, 1000, { pedido, loja: x.loja });
   // Mudou o total de uma entrega: redistribui os tamanhos daquela entrega no formato da grade da loja.
   const setTotalEntrega = (p: Fw27Produto, x: Fw27Linha, d: string, v: number) => {
     const m = copiaMatriz(x);
@@ -1075,7 +1074,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const qs = dividir(Math.round(v), pesosLojas(ls, (x) => x.sugerido));
     atualizar((pd) => {
       const itens = { ...pd.itens }; const entregas = { ...(pd.entregas || {}) }; const gradeEntrega = { ...(pd.gradeEntrega || {}) };
-      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i], { pedido, loja: x.loja }); delete entregas[k]; delete gradeEntrega[k]; });
+      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeDe(p, qs[i], { pedido, loja: x.loja }); delete entregas[k]; delete gradeEntrega[k]; });
       return { ...pd, itens, entregas, gradeEntrega };
     });
   };
