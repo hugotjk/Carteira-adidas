@@ -50,7 +50,7 @@ def canon(n):
     n = unicodedata.normalize("NFD", str(n).upper()); n = "".join(c for c in n if not unicodedata.combining(c))
     n = re.sub(r"[-_.]", " ", n); n = re.sub(r"\bNAO\s*USAR\b", " ", n); n = re.sub(r"\s+", " ", n).strip()
     if re.search(r"\bECOMM\b", n): n = re.sub(r"\s+", " ", re.sub(r"(\D)2\b", r"\1", n)).strip()
-    return {"ADIDAS FLA": "GAVEA FLA"}.get(n, n)
+    return {"ADIDAS FLA": "GAVEA FLA", "NRN BELEM METROPOLE": "NRN METROPOLE"}.get(n, n)
 TAM = {"PPP": "2XS", "PP": "XS", "P": "S", "G": "L", "GG": "XL", "2G": "2XL", "XXL": "2XL", "3G": "3XL", "4G": "4XL", "7-8": "7-8A"}
 def tam(t):
     t = str(t).strip().upper()
