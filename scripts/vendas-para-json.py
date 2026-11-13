@@ -62,15 +62,20 @@ tot = venda.sum()
 # últimos 90 dias: ago, set e out/2026
 v90 = v[(v.MES >= "2026-08") & (v.MES <= "2026-10")]
 venda90 = v90[v90.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").CMV.sum()
-# NRN ORLANDO (EUA): o CMV dela no PDV vem quase zerado (R$ 3/peça). Verba = peças vendidas × CMV por peça
-# das outras lojas no mesmo período (pedido do Hugo, 13/11/2026). Só para ela.
+# NRN ORLANDO (EUA): o CMV dela no PDV vem quase zerado (R$ 3/peça). Verba refeita ITEM A ITEM (pedido do Hugo,
+# 13/11/2026): peças de cada referência × CMV por peça dessa referência nas outras lojas no mesmo período;
+# referência que só ela vendeu usa o CMV médio por peça das outras lojas. Só para ela.
 CMV_PECAS = ["NRN ORLANDO"]
 for nome in CMV_PECAS:
     for serie, per in ((venda, v26), (venda90, v90)):
         outras = per[per.LOJA_APP.isin(set(lista.LOJA_APP)) & ~per.LOJA_APP.isin(CMV_PECAS)]
-        cmv_peca = outras.CMV.sum() / outras.PECAS.sum()
-        serie[nome] = per[per.LOJA_APP == nome].PECAS.sum() * cmv_peca
-        print(nome, "peças", int(per[per.LOJA_APP == nome].PECAS.sum()), "× CMV/peça", round(cmv_peca, 2), "=", round(serie[nome]))
+        ref = outras.groupby("REFERENCIA_FORNECEDOR")[["CMV", "PECAS"]].sum()
+        ref = ref[ref.PECAS > 0]
+        cpp = ref.CMV / ref.PECAS
+        geral = outras.CMV.sum() / outras.PECAS.sum()
+        dela = per[per.LOJA_APP == nome].groupby("REFERENCIA_FORNECEDOR").PECAS.sum()
+        serie[nome] = float((dela * cpp.reindex(dela.index).fillna(geral)).sum())
+        print(nome, "peças", int(dela.sum()), "item a item =", round(serie[nome]))
 tot = venda.sum()
 tot90 = venda90.sum()
 lojas = []
