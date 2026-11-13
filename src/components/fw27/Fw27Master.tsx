@@ -97,15 +97,20 @@ const NumInput: React.FC<{
   const fmt = (v: number) => (zeroVazio && !Number(v) ? "" : (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: decimals }));
   const [txt, setTxt] = React.useState(fmt(value));
   const [foco, setFoco] = React.useState(false);
-  React.useEffect(() => { if (!foco) setTxt(fmt(value)); }, [value, foco]);
+  // Só grava se a pessoa digitou algo neste campo. Assim, um campo que recebeu o cursor (ex.: Enter no total do
+  // produto desce para a 1ª loja) acompanha o recálculo e não regrava o número antigo ao sair.
+  const sujo = React.useRef(false);
+  React.useEffect(() => { if (!foco || !sujo.current) setTxt(fmt(value)); }, [value, foco]);
   const commit = () => {
+    if (!sujo.current) { setTxt(fmt(value)); return; }
+    sujo.current = false;
     const v = String(txt).trim() === "" ? 0 : Number(String(txt).replace(/\./g, "").replace(",", "."));
     if (!isNaN(v) && v >= 0) onCommit(v); else setTxt(fmt(value));
   };
   return (
     <input
       inputMode="decimal" aria-label={ariaLabel} disabled={disabled} value={txt}
-      onFocus={(e) => { setFoco(true); e.target.select(); }}
+      onFocus={(e) => { sujo.current = false; setFoco(true); e.target.select(); }}
       onBlur={() => { setFoco(false); commit(); }}
       onKeyDown={(e) => {
         const el = e.target as HTMLInputElement;
@@ -116,7 +121,7 @@ const NumInput: React.FC<{
           if (!navegar(el, dir) && e.key === "Enter") el.blur();
         } else if (e.key === "Enter") el.blur();
       }}
-      onChange={(e) => setTxt(e.target.value)}
+      onChange={(e) => { sujo.current = true; setTxt(e.target.value); }}
       className={cn("bg-gray-50 rounded-xl px-2 h-9 text-right font-extrabold text-sm outline-none focus:ring-2 focus:ring-black/10 disabled:text-gray-400 min-w-0", className)}
     />
   );
