@@ -264,7 +264,7 @@ export const VENDAS = vendasPdv as {
 };
 
 /** GAVEA FLA e ADIDAS FLA são a mesma loja. */
-const JUNTAR_LOJA: Record<string, string> = { "ADIDAS FLA": "GAVEA FLA", "NRN BELEM METROPOLE": "NRN METROPOLE" };
+const JUNTAR_LOJA: Record<string, string> = { "ADIDAS FLA": "GAVEA FLA" };
 export const nomeBase = (nome: string) => { const c = lojaCanonica(nome); return JUNTAR_LOJA[c] || c; };
 const LOJA_BASE = new Map(VENDAS.lojas.map((l) => [l.nome, l]));
 /** A loja na base de vendas (gestor, código, % das vendas), pelo nome. */

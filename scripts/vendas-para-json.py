@@ -32,7 +32,7 @@ def canon(n):
     return n
 
 # GAVEA FLA e ADIDAS FLA são uma loja só (mesmo código).
-JUNTAR = {"ADIDAS FLA": "GAVEA FLA", "NRN BELEM METROPOLE": "NRN METROPOLE"}  # Belém Metropole = nome no PDV da NRN METROPOLE (Hugo, 13/11/2026)
+JUNTAR = {"ADIDAS FLA": "GAVEA FLA"}
 lojaApp = lambda n: JUNTAR.get(canon(n), canon(n))
 
 # Tamanho do PDV → tamanho da AMD
@@ -55,7 +55,7 @@ v = v.merge(p, on="REFERENCIA_FORNECEDOR", how="left")
 
 # ---------- lojas ----------
 lg["LOJA_APP"] = lg.LOJA.map(lojaApp)
-lista = lg.sort_values("COD_ADIDAS", ascending=False).drop_duplicates("LOJA_APP").sort_index()  # junta mantendo a linha com código
+lista = lg.drop_duplicates("LOJA_APP")
 v26 = v[(v.MES >= "2026-06") & (v.MES <= "2026-10")]
 venda = v26[v26.LOJA_APP.isin(set(lista.LOJA_APP))].groupby("LOJA_APP").CMV.sum()  # em CUSTO (CMV)
 tot = venda.sum()
