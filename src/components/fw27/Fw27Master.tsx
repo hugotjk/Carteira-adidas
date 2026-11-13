@@ -97,15 +97,20 @@ const NumInput: React.FC<{
   const fmt = (v: number) => (zeroVazio && !Number(v) ? "" : (Number(v) || 0).toLocaleString("pt-BR", { maximumFractionDigits: decimals }));
   const [txt, setTxt] = React.useState(fmt(value));
   const [foco, setFoco] = React.useState(false);
-  React.useEffect(() => { if (!foco) setTxt(fmt(value)); }, [value, foco]);
+  // Só grava se a pessoa digitou algo neste campo. Assim, um campo que recebeu o cursor (ex.: Enter no total do
+  // produto desce para a 1ª loja) acompanha o recálculo e não regrava o número antigo ao sair.
+  const sujo = React.useRef(false);
+  React.useEffect(() => { if (!foco || !sujo.current) setTxt(fmt(value)); }, [value, foco]);
   const commit = () => {
+    if (!sujo.current) { setTxt(fmt(value)); return; }
+    sujo.current = false;
     const v = String(txt).trim() === "" ? 0 : Number(String(txt).replace(/\./g, "").replace(",", "."));
     if (!isNaN(v) && v >= 0) onCommit(v); else setTxt(fmt(value));
   };
   return (
     <input
       inputMode="decimal" aria-label={ariaLabel} disabled={disabled} value={txt}
-      onFocus={(e) => { setFoco(true); e.target.select(); }}
+      onFocus={(e) => { sujo.current = false; setFoco(true); e.target.select(); }}
       onBlur={() => { setFoco(false); commit(); }}
       onKeyDown={(e) => {
         const el = e.target as HTMLInputElement;
@@ -116,7 +121,7 @@ const NumInput: React.FC<{
           if (!navegar(el, dir) && e.key === "Enter") el.blur();
         } else if (e.key === "Enter") el.blur();
       }}
-      onChange={(e) => setTxt(e.target.value)}
+      onChange={(e) => { sujo.current = true; setTxt(e.target.value); }}
       className={cn("bg-gray-50 rounded-xl px-2 h-9 text-right font-extrabold text-sm outline-none focus:ring-2 focus:ring-black/10 disabled:text-gray-400 min-w-0", className)}
     />
   );
@@ -1027,7 +1032,9 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       delete gradeEntrega[k];
       return { ...pd, itens: { ...pd.itens, [k]: grade }, entregas, gradeEntrega };
     });
-  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeProporcional(p, x.grade, total, { pedido, loja: x.loja }));
+  // Mudou o total da loja: refaz a grade pelo % de tamanhos da loja (o mesmo da tela Representatividade).
+  // Quem acerta a grade mexendo nos tamanhos não precisa mexer no total depois.
+  const setTotal = (p: Fw27Produto, x: Fw27Linha, total: number) => setGrade(p, x.loja.id, gradeDe(p, Math.round(total), { pedido, loja: x.loja }));
   // Grade por entrega: mexeu numa célula, o resto (totais da loja, do tamanho e da entrega) acompanha.
   const salvarMatriz = (p: Fw27Produto, x: Fw27Linha, m: Record<string, Record<string, number>>) =>
     atualizar((pd) => ({ ...pd, gradeEntrega: { ...(pd.gradeEntrega || {}), [chaveItem(p.artigo, x.loja.id)]: m } }));
@@ -1038,13 +1045,10 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     m[d][t] = Math.round(v);
     salvarMatriz(p, x, m);
   };
-  // Formato da grade da loja para redistribuir uma entrega: a grade editada à mão (se houver), senão a da loja
-  // (vendas / grupo / grade única). Não usa a composição atual da entrega, que numa entrega pequena fica
+  // Formato da grade da loja para redistribuir uma entrega: o % de tamanhos da loja (Representatividade:
+  // vendas / grupo / grade única). Não usa a composição atual da entrega, que numa entrega pequena fica
   // concentrada em poucos tamanhos e, a cada edição, concentrava mais (ex.: 12 peças viravam só M e L).
-  const formatoGrade = (p: Fw27Produto, x: Fw27Linha) => {
-    const ed = pedido.itens[chaveItem(p.artigo, x.loja.id)];
-    return ed && p.tamanhos.some((t) => Number(ed[t]) > 0) ? ed : gradeDe(p, 1000, { pedido, loja: x.loja });
-  };
+  const formatoGrade = (p: Fw27Produto, x: Fw27Linha) => gradeDe(p, 1000, { pedido, loja: x.loja });
   // Mudou o total de uma entrega: redistribui os tamanhos daquela entrega no formato da grade da loja.
   const setTotalEntrega = (p: Fw27Produto, x: Fw27Linha, d: string, v: number) => {
     const m = copiaMatriz(x);
@@ -1075,7 +1079,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     const qs = dividir(Math.round(v), pesosLojas(ls, (x) => x.sugerido));
     atualizar((pd) => {
       const itens = { ...pd.itens }; const entregas = { ...(pd.entregas || {}) }; const gradeEntrega = { ...(pd.gradeEntrega || {}) };
-      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeProporcional(p, x.grade, qs[i], { pedido, loja: x.loja }); delete entregas[k]; delete gradeEntrega[k]; });
+      ls.forEach((x, i) => { const k = chaveItem(p.artigo, x.loja.id); itens[k] = gradeDe(p, qs[i], { pedido, loja: x.loja }); delete entregas[k]; delete gradeEntrega[k]; });
       return { ...pd, itens, entregas, gradeEntrega };
     });
   };
