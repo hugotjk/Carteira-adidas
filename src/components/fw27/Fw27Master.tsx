@@ -1038,12 +1038,17 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
     m[d][t] = Math.round(v);
     salvarMatriz(p, x, m);
   };
+  // Formato da grade da loja para redistribuir uma entrega: a grade editada à mão (se houver), senão a da loja
+  // (vendas / grupo / grade única). Não usa a composição atual da entrega, que numa entrega pequena fica
+  // concentrada em poucos tamanhos e, a cada edição, concentrava mais (ex.: 12 peças viravam só M e L).
+  const formatoGrade = (p: Fw27Produto, x: Fw27Linha) => {
+    const ed = pedido.itens[chaveItem(p.artigo, x.loja.id)];
+    return ed && p.tamanhos.some((t) => Number(ed[t]) > 0) ? ed : gradeDe(p, 1000, { pedido, loja: x.loja });
+  };
   // Mudou o total de uma entrega: redistribui os tamanhos daquela entrega no formato da grade da loja.
   const setTotalEntrega = (p: Fw27Produto, x: Fw27Linha, d: string, v: number) => {
     const m = copiaMatriz(x);
-    const atual = m[d] || {};
-    const base = p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade;
-    m[d] = gradeProporcional(p, base, Math.round(v), { pedido, loja: x.loja });
+    m[d] = gradeProporcional(p, formatoGrade(p, x), Math.round(v), { pedido, loja: x.loja });
     salvarMatriz(p, x, m);
   };
   // Mudou o total de um tamanho na loja: espalha pelas entregas como esse tamanho já estava (ou como as entregas estão).
@@ -1081,8 +1086,7 @@ const SugestaoTab: React.FC<EditProps & { linhas: Fw27Linha[]; imageMap: Record<
       const gradeEntrega = { ...(pd.gradeEntrega || {}) };
       ls.forEach((x, i) => {
         const m = JSON.parse(JSON.stringify(x.gradeEntregas)) as Record<string, Record<string, number>>;
-        const atual = m[d] || {};
-        m[d] = gradeProporcional(p, p.tamanhos.some((t) => atual[t] > 0) ? atual : x.grade, qs[i], { pedido, loja: x.loja });
+        m[d] = gradeProporcional(p, formatoGrade(p, x), qs[i], { pedido, loja: x.loja });
         gradeEntrega[chaveItem(p.artigo, x.loja.id)] = m;
       });
       return { ...pd, gradeEntrega };
