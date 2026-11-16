@@ -1388,6 +1388,7 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
   const { user } = useAuth();
   const [msg, setMsg] = React.useState<Record<string, string>>({});
   const baixar = async (l: Fw27Loja) => {
+    setMsg((m) => ({ ...m, [l.id]: "Gerando os arquivos…" }));
     try {
       // Dois arquivos: o do CLICK (site) e, se houver artigo fora do site, a ZSOL (mandar por e-mail).
       const r = exportarLojaFornecedor(l, linhas, { datas: pedido.datas });
@@ -1396,9 +1397,10 @@ const ExportarCard: React.FC<{ pedido: Fw27Pedido; linhas: Fw27Linha[]; onRegist
       const pecasZ = zs.reduce((a, z) => a + z[6], 0);
       let stZ: string = "nada";
       if (st === "salvo" && zs.length) stZ = await salvarArquivo(nomeArquivoZsol(l.nome, String(l.codAdidas || "")), arquivoZsol(zs));
-      if (st === "salvo") { await salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id], user?.uid)); onRegistro(); }
       setMsg((m) => ({ ...m, [l.id]: st !== "salvo" ? "Download cancelado"
         : `Baixado: CLICK ${n0(r.pecas)} peças` + (zs.length ? (stZ === "salvo" ? ` + ZSOL ${n0(pecasZ)} peças (mandar por e-mail)` : " · ZSOL cancelada") : "") }));
+      // Guarda no histórico sem segurar o botão (se o Firebase estiver sem cota, fica no aparelho).
+      if (st === "salvo") salvarRegistro(montarRegistro("exportação", user?.email || "", pedido, linhas, [l.id], user?.uid)).then(onRegistro).catch(() => {});
     } catch (e: any) {
       setMsg((m) => ({ ...m, [l.id]: "Não deu para gerar: " + (e?.message || e) }));
     }
