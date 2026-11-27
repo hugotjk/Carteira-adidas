@@ -74,3 +74,30 @@ export async function resetarTodos(pedidos: PedidoDeLogin[], por: string): Promi
   }
   return { r, feitos, falhas };
 }
+
+/**
+ * Reset de um login só, ou de uma loja dele (master, no Acompanhamento).
+ * Login: volta curva, % subgrupos, quantidades/entregas editadas e datas trocadas (como o reset geral).
+ * Loja: volta só as quantidades/entregas editadas daquela loja (curva, subgrupos e datas valem para o pedido todo e ficam).
+ * Lojas, verba, % de cada loja e grades ficam. Pedido fechado volta a rascunho. Guarda uma cópia no Histórico antes.
+ */
+export function aplicarResetIndividual(p: Fw27Pedido, em: string, lojaId?: string): Fw27Pedido {
+  if (!lojaId) return { ...p, curva: {}, subgrupos: {}, itens: {}, entregas: {}, gradeEntrega: {}, datas: {}, status: "rascunho", resetIndEm: em };
+  const fora = <T,>(o?: Record<string, T>) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !k.endsWith(`|${lojaId}`))) as Record<string, T>;
+  return { ...p, itens: fora(p.itens), entregas: fora(p.entregas), gradeEntrega: fora(p.gradeEntrega), status: "rascunho", resetIndEm: em };
+}
+
+/** Editados à mão de uma loja (para mostrar no Acompanhamento). */
+export function editadosDaLoja(p: Fw27Pedido, lojaId: string) {
+  const ks = new Set([...Object.keys(p.itens || {}), ...Object.keys(p.entregas || {}), ...Object.keys(p.gradeEntrega || {})]);
+  return Array.from(ks).filter((k) => k.endsWith(`|${lojaId}`)).length;
+}
+
+export async function resetarUm(x: PedidoDeLogin, por: string, lojaId?: string): Promise<string> {
+  const em = new Date().toISOString();
+  const pedido = x.pedido;
+  const antes = aplicarVerbas(pedido);
+  await salvarRegistro(montarRegistro("antes da atualização", pedido.porEmail || "", antes, calcular(antes), lojaId ? [lojaId] : undefined, x.uid));
+  await setDoc(doc(db, "fw27Pedidos", x.uid), JSON.parse(JSON.stringify({ ...aplicarResetIndividual(pedido, em, lojaId), atualizadoEm: em })));
+  return em;
+}
