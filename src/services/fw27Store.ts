@@ -61,6 +61,7 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
     ...(d.lojasAuto && { lojasAuto: true }),
     ...(d.porEmail && { porEmail: d.porEmail }),
     ...(d.resetEm && { resetEm: d.resetEm }),
+    ...(d.resetIndEm && { resetIndEm: d.resetIndEm }),
     ...(Array.isArray(d.ordemFixa) && d.ordemFixa.length && { ordemFixa: d.ordemFixa }),
     status: d.status === "enviado" ? "enviado" : "rascunho",
     atualizadoEm: d.atualizadoEm,
@@ -69,6 +70,9 @@ function normalizar(d: Partial<Fw27Pedido> | undefined | null): Fw27Pedido {
 }
 
 const maisNovo = (a?: string, b?: string) => (a || "") >= (b || "");
+/** O master resetou este login (ou uma loja dele) depois da cópia que está no aparelho: vale a do Firebase. */
+const resetadoDepois = (remoto: Fw27Pedido | null, local: Fw27Pedido | null) =>
+  !!remoto?.resetIndEm && (remoto.resetIndEm > (local?.resetIndEm || ""));
 
 export function useFw27Pedido(uid: string | undefined, email?: string) {
   const [pedido, setPedidoState] = React.useState<Fw27Pedido>(pedidoVazio());
@@ -93,7 +97,7 @@ export function useFw27Pedido(uid: string | undefined, email?: string) {
         setErro(e?.code === "permission-denied" ? "O Firebase ainda não liberou esta tela (regras). Salvando só neste aparelho." : "Sem conexão com o Firebase. Salvando só neste aparelho.");
       }
       if (!vivo) return;
-      const escolhido = remoto && local ? (maisNovo(remoto.atualizadoEm, local.atualizadoEm) ? remoto : local) : remoto || local || pedidoVazio();
+      const escolhido = remoto && local ? (resetadoDepois(remoto, local) || maisNovo(remoto.atualizadoEm, local.atualizadoEm) ? remoto : local) : remoto || local || pedidoVazio();
       setPedidoState(escolhido);
       setSalvoEm(escolhido.atualizadoEm || null);
       setEstado("salvo");
@@ -132,6 +136,30 @@ export function useFw27Pedido(uid: string | undefined, email?: string) {
       return novo;
     });
   }, [gravar, email]);
+
+  // Ao voltar para a aba: se o master resetou este login (ou uma loja dele) nesse meio tempo, troca pelo pedido do Firebase.
+  React.useEffect(() => {
+    if (!uid) return;
+    const aoVoltar = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const snap = await getDoc(doc(db, COLECAO, uid));
+        if (!snap.exists()) return;
+        const remoto = normalizar(snap.data() as Fw27Pedido);
+        setPedidoState((atual) => {
+          if (!resetadoDepois(remoto, atual)) return atual;
+          if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
+          ultimo.current = null;
+          set(chaveLocal(uid), remoto).catch(() => {});
+          setSalvoEm(remoto.atualizadoEm || null);
+          setEstado("salvo");
+          return remoto;
+        });
+      } catch { /* sem conexão: confere na próxima vez */ }
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, [uid]);
 
   // Ao trocar de aba do navegador ou fechar a página com alteração pendente, grava na hora.
   React.useEffect(() => {

@@ -90,6 +90,8 @@ export interface Fw27Pedido {
   ordemFixa?: string[];
   /** Data do último reset geral (feito pelo master) que este pedido recebeu. */
   resetEm?: string;
+  /** Data do último reset só deste login ou de uma loja dele (feito pelo master no Acompanhamento). */
+  resetIndEm?: string;
   /** Curva de compra: peso de cada mês ("05" … "11"). Vazio = todos iguais. */
   curva?: Record<string, number>;
   status: Fw27Status;

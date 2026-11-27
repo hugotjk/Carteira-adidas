@@ -13,7 +13,7 @@ import { useAuth } from "../../context/AuthContext";
 import { salvarArquivo } from "../../lib/salvarArquivo";
 import { arquivoClickDeItens, zipArquivos, ARTIGOS_NO_CARRINHO, arquivoZsol, nomeArquivoZsol, LinhaZsol } from "../../services/fw27Exportar";
 import { listarRegistros, listarPedidosTodos, montarRegistro, excelDoRegistro, Fw27Registro, ItemRegistro, PedidoDeLogin } from "../../services/fw27Historico";
-import { lerReset, resetarTodos, diferencasDoPadrao, Fw27Reset } from "../../services/fw27Reset";
+import { lerReset, resetarTodos, diferencasDoPadrao, Fw27Reset, resetarUm, editadosDaLoja } from "../../services/fw27Reset";
 import { PRODUTOS, precoBase, aplicarVerbas, calcular, totais, lojaNaBase, Fw27Pedido } from "../../services/fw27";
 
 // ---------------- dados ----------------
@@ -156,6 +156,41 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
   const [msg, setMsg] = React.useState("");
   const [reset, setReset] = React.useState<Fw27Reset | null>(null);
   React.useEffect(() => { lerReset().then(setReset); }, []);
+  const ehMaster = userProfile?.role === "master" || user?.email === "hugotjk2@gmail.com";
+  // Reset de um login ou de uma loja: 1º toque arma, 2º toque (em até 5 s) faz.
+  const [armadoInd, setArmadoInd] = React.useState("");
+  const [fazendoInd, setFazendoInd] = React.useState("");
+  React.useEffect(() => { if (!armadoInd) return; const t = setTimeout(() => setArmadoInd(""), 5000); return () => clearTimeout(t); }, [armadoInd]);
+  const resetarInd = async (uid: string, lojaId?: string, nome?: string) => {
+    const chave = uid + "|" + (lojaId || "");
+    if (armadoInd !== chave) { setArmadoInd(chave); return; }
+    setArmadoInd(""); setFazendoInd(chave);
+    const bruto = (pedidos || []).find((p) => p.uid === uid);
+    try {
+      if (!bruto) throw new Error("sem pedido");
+      await resetarUm(bruto, user?.email || "", lojaId);
+      setMsg(lojaId ? `${nome} voltou para a sugestão (cópia no Histórico). Peça para fechar e abrir o app.` : `Pedido de ${nome} voltou para a sugestão inicial (cópia no Histórico). Peça para fechar e abrir o app.`);
+      recarregar();
+    } catch { setMsg("Não consegui resetar. Confira a conexão e tente de novo."); }
+    setFazendoInd("");
+  };
+  const BotaoReset: React.FC<{ uid: string; lojaId?: string; nome: string; pequeno?: boolean }> = ({ uid, lojaId, nome, pequeno }) => {
+    const chave = uid + "|" + (lojaId || "");
+    const armado = armadoInd === chave, fazendo = fazendoInd === chave;
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); resetarInd(uid, lojaId, nome); }}
+        disabled={!!fazendoInd}
+        title={lojaId ? "Volta as quantidades e entregas editadas desta loja para a sugestão" : "Volta curva, % subgrupos, quantidades, entregas e datas deste login para a sugestão inicial (lojas, verba e grades ficam)"}
+        className={cn("inline-flex items-center gap-1 rounded-lg font-black whitespace-nowrap disabled:opacity-50",
+          pequeno ? "h-6 px-2 text-[9px]" : "h-8 px-3 text-[10px]",
+          armado ? "bg-red-600 text-white" : "bg-amber-50 text-amber-800 hover:bg-amber-100")}
+      >
+        <RotateCcw size={pequeno ? 9 : 11} className={fazendo ? "animate-spin" : ""} />
+        {fazendo ? "Resetando…" : armado ? "Toque de novo" : lojaId ? "Resetar loja" : "Resetar login"}
+      </button>
+    );
+  };
 
   const versoes = React.useMemo(() => versoesDe(regs || []), [regs]);
   const porLoja = React.useMemo(() => {
@@ -324,6 +359,8 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
       <Card>
         <h3 className="text-sm font-extrabold">Pedidos em andamento</h3>
         <p className="text-[10px] text-gray-400 mt-0.5 mb-2">O que cada login está montando agora, salvo sozinho a cada alteração, mesmo antes de baixar.</p>
+        {ehMaster && <p className="text-[10px] text-gray-400 -mt-1 mb-2">Resetar login: volta curva, % subgrupos, quantidades, entregas e datas do login para a sugestão inicial. Resetar loja (abra o login): volta só o que foi editado naquela loja. Lojas, verba e grades ficam; o pedido antes fica no Histórico.</p>}
+        {ehMaster && msg.includes("sugest") && <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded-lg px-2 py-1 mb-2">{msg}</p>}
         {pedidos === undefined && <div className="text-[11px] text-gray-400 py-3">Carregando…</div>}
         {pedidos === null && (
           <div className="text-[11px] text-amber-700 bg-amber-50 rounded-xl p-3">
@@ -357,6 +394,7 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                     {reset && ((x.pedido.resetEm || "") >= reset.em
                       ? <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-emerald-50 text-emerald-700">resetado {quandoBR(x.pedido.resetEm!)}</span>
                       : <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-blue-50 text-blue-700">não resetado</span>)}
+                    {x.pedido.resetIndEm && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-amber-50 text-amber-800">reset individual {quandoBR(x.pedido.resetIndEm)}</span>}
                     {dif.curva && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">curva própria</span>}
                     {dif.subgrupos && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">% subgrupos próprio</span>}
                     {dif.editados > 0 && <span className="text-[9px] font-black rounded px-1.5 py-0.5 bg-gray-100 text-gray-600">{dif.editados} {dif.editados === 1 ? "produto editado" : "produtos editados"} à mão</span>}
@@ -365,12 +403,13 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                 <Botao onClick={() => { const r = montarRegistro("exportação", x.pedido.porEmail || "", x.pedido, x.linhas); baixar(`FW27_pedido_atual_${(x.pedido.porEmail || x.uid).replace(/[^A-Za-z0-9]+/g, "_")}.xlsx`, excelDoRegistro(r)); }}>
                   <FileSpreadsheet size={12} /> Excel do pedido atual
                 </Botao>
+                {ehMaster && <BotaoReset uid={x.uid} nome={x.nome || x.pedido.porEmail || "login"} />}
               </div>
               {aberto && (
                 <div className="mt-2 ml-5 rounded-xl border border-gray-100 overflow-hidden">
                   <table className="w-full text-[10px]">
                     <thead className="bg-gray-50 text-gray-400 font-extrabold uppercase">
-                      <tr><th className="text-left px-2 py-1.5">Loja</th><th className="text-right px-2">Peças</th><th className="text-right px-2">Valor</th><th className="text-right px-2">Da verba</th><th className="text-left px-2">Download</th></tr>
+                      <tr><th className="text-left px-2 py-1.5">Loja</th><th className="text-right px-2">Peças</th><th className="text-right px-2">Valor</th><th className="text-right px-2">Da verba</th><th className="text-left px-2">Download</th>{ehMaster && <th className="text-right px-2">Sugestão</th>}</tr>
                     </thead>
                     <tbody>
                       {x.pedido.lojas.map((l, i) => {
@@ -388,6 +427,14 @@ const Fw27Acompanhamento: React.FC<{ dados: ReturnType<typeof useAcompanhamento>
                                 : mudou ? <span className="text-amber-700 font-bold">baixou {quandoBR(ult.quando)} ({n0(ult.pecas)} pçs) · mudou depois</span>
                                 : <span className="text-emerald-700 font-bold">baixou {quandoBR(ult.quando)}</span>}
                             </td>
+                            {ehMaster && (
+                              <td className="text-right px-2 py-1">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {editadosDaLoja(x.pedido, l.id) > 0 && <span className="text-[9px] text-gray-500 font-bold">{editadosDaLoja(x.pedido, l.id)} editado(s)</span>}
+                                  <BotaoReset uid={x.uid} lojaId={l.id} nome={l.nome} pequeno />
+                                </span>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
